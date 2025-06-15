@@ -1,0 +1,343 @@
+/* Глобальные стили */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+:root {
+    --primary-color: #4db8ff;
+    --secondary-color: #2a5a8a;
+    --dark-bg: #0c1b25;
+    --medium-bg: #1a2a3a;
+    --light-bg: #22394d;
+    --text-light: #e0e0e0;
+    --text-secondary: #a0d2ff;
+    --card-bg: rgba(30, 50, 70, 0.5);
+    --card-hover: rgba(35, 60, 85, 0.6);
+}
+
+body {
+    background: linear-gradient(135deg, var(--dark-bg), var(--medium-bg), var(--light-bg));
+    color: var(--text-light);
+    line-height: 1.6;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 15px;
+}
+
+/* Анимация замка - адаптивная */
+.lock-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: rgba(10, 15, 25, 0.95);
+    z-index: 1000;
+    transition: opacity 1s ease, transform 1s ease;
+}
+
+.lock-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 200px;
+    height: auto;
+    aspect-ratio: 1/1;
+}
+
+.lock-circle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    height: 90%;
+    border: 8px solid #2a4a6e;
+    border-radius: 50%;
+    box-shadow: 0 0 20px rgba(42, 74, 110, 0.7);
+}
+
+.lock-fill {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.95);
+    width: 85%;
+    height: 85%;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #1a3a5a, var(--secondary-color));
+    clip-path: polygon(50% 50%, 50% 50%, 50% 50%, 50% 50%);
+    transition: clip-path 3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+}
+
+.lock-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 4rem;
+    color: var(--primary-color);
+    text-shadow: 0 0 20px rgba(77, 184, 255, 0.8);
+    opacity: 0.9;
+    transition: transform 0.5s ease, opacity 0.5s ease;
+}
+
+.lock-progress {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    border: 3px solid rgba(77, 184, 255, 0.3);
+}
+
+.progress-text {
+    position: absolute;
+    top: calc(100% + 20px);
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    text-align: center;
+    width: 100%;
+    max-width: 300px;
+    padding: 0 15px;
+    opacity: 0.8;
+}
+
+/* Оглавление - адаптивное */
+.toc-section {
+    background: rgba(20, 35, 50, 0.6);
+    border-radius: 12px;
+    border: 1px solid rgba(77, 184, 255, 0.3);
+    padding: 20px;
+    margin: 30px auto;
+    max-width: 900px;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 1s ease, transform 1s ease;
+}
+
+.toc-title {
+    text-align: center;
+    color: var(--primary-color);
+    margin-bottom: 20px;
+    font-size: 1.8rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 0 10px;
+}
+
+.toc-title i {
+    font-size: 2.5rem;
+}
+
+.toc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 15px;
+}
+
+.toc-card {
+    background: var(--card-bg);
+    border-radius: 10px;
+    padding: 15px;
+    transition: all 0.3s ease;
+    border: 1px solid rgba(77, 184, 255, 0.2);
+    cursor: pointer;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.toc-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.3);
+    border-color: rgba(77, 184, 255, 0.5);
+    background: var(--card-hover);
+}
+
+.toc-card i {
+    color: var(--primary-color);
+    font-size: 1.8rem;
+    min-width: 40px;
+    text-align: center;
+    margin-top: 5px;
+    flex-shrink: 0;
+}
+
+.toc-card-content {
+    flex: 1;
+}
+
+.toc-card-content h3 {
+    color: #fff;
+    margin-bottom: 8px;
+    font-size: 1.2rem;
+}
+
+.toc-card-content ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.toc-card-content li {
+    position: relative;
+    padding-left: 20px;
+    margin-bottom: 6px;
+    font-size: 0.95rem;
+    color: #c0dfff;
+}
+
+.toc-card-content li:before {
+    content: "•";
+    color: var(--primary-color);
+    position: absolute;
+    left: 0;
+}
+
+footer {
+    text-align: center;
+    margin-top: 30px;
+    padding: 15px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    border-top: 1px solid rgba(77, 184, 255, 0.3);
+    opacity: 0;
+    transition: opacity 1s ease;
+}
+
+/* Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+    
+    .toc-section {
+        padding: 15px;
+        margin: 20px auto;
+        border-radius: 10px;
+    }
+    
+    .toc-title {
+        font-size: 1.5rem;
+        margin-bottom: 15px;
+    }
+    
+    .toc-title i {
+        font-size: 2rem;
+    }
+    
+    .toc-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .toc-card {
+        padding: 12px;
+    }
+    
+    .toc-card i {
+        font-size: 1.5rem;
+    }
+    
+    .lock-icon {
+        font-size: 3rem;
+    }
+    
+    .progress-text {
+        font-size: 1rem;
+        top: calc(100% + 15px);
+    }
+}
+
+/* Адаптивность для очень маленьких экранов */
+@media (max-width: 480px) {
+    .toc-title {
+        font-size: 1.3rem;
+    }
+    
+    .toc-card {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+    
+    .toc-card i {
+        margin-bottom: 8px;
+    }
+    
+    .toc-card-content li {
+        padding-left: 0;
+    }
+    
+    .toc-card-content li:before {
+        display: none;
+    }
+    
+    .lock-wrapper {
+        max-width: 150px;
+    }
+    
+    .lock-icon {
+        font-size: 2.5rem;
+    }
+    
+    .progress-text {
+        font-size: 0.9rem;
+    }
+}
+
+/* Планшеты в портретной ориентации */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .toc-grid {
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    }
+    
+    .toc-card {
+        padding: 18px;
+    }
+}
+
+/* Десктопы с высоким разрешением */
+@media (min-width: 1200px) {
+    .toc-section {
+        padding: 30px;
+    }
+    
+    .toc-grid {
+        gap: 25px;
+    }
+}
+
+/* Ландшафтная ориентация для мобильных */
+@media (max-height: 500px) and (orientation: landscape) {
+    .lock-wrapper {
+        max-width: 150px;
+    }
+    
+    .progress-text {
+        top: calc(100% + 10px);
+        font-size: 1rem;
+    }
+    
+    .toc-section {
+        margin: 15px auto;
+    }
+}
