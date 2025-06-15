@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Defensive Linux Security - Оглавление</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Глобальные стили */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        :root {
+            --primary-color: #4db8ff;
+            --secondary-color: #2a5a8a;
+            --dark-bg: #0c1b25;
+            --medium-bg: #1a2a3a;
+            --light-bg: #22394d;
+            --text-light: #e0e0e0;
+            --text-secondary: #a0d2ff;
+            --card-bg: rgba(30, 50, 70, 0.5);
+            --card-hover: rgba(35, 60, 85, 0.6);
+        }
+        
+        body {
+            background: linear-gradient(135deg, var(--dark-bg), var(--medium-bg), var(--light-bg));
+            color: var(--text-light);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 15px;
+        }
+        
+        /* Анимация замка - адаптивная */
+        .lock-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(10, 15, 25, 0.95);
+            z-index: 1000;
+            transition: opacity 1s ease, transform 1s ease;
+        }
+        
+        .lock-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 200px;
+            height: auto;
+            aspect-ratio: 1/1;
+        }
+        
+        .lock-circle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            height: 90%;
+            border: 8px solid #2a4a6e;
+            border-radius: 50%;
+            box-shadow: 0 0 20px rgba(42, 74, 110, 0.7);
+        }
+        
+        .lock-fill {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.95);
+            width: 85%;
+            height: 85%;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #1a3a5a, var(--secondary-color));
+            clip-path: polygon(50% 50%, 50% 50%, 50% 50%, 50% 50%);
+            transition: clip-path 3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+        }
+        
+        .lock-icon {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 4rem;
+            color: var(--primary-color);
+            text-shadow: 0 0 20px rgba(77, 184, 255, 0.8);
+            opacity: 0.9;
+            transition: transform 0.5s ease, opacity 0.5s ease;
+        }
+        
+        .lock-progress {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 3px solid rgba(77, 184, 255, 0.3);
+        }
+        
+        .progress-text {
+            position: absolute;
+            top: calc(100% + 20px);
+            left: 50%;
+            transform: translateX(-50%);
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            text-align: center;
+            width: 100%;
+            max-width: 300px;
+            padding: 0 15px;
+            opacity: 0.8;
+        }
+        
+        /* Оглавление - адаптивное */
+        .toc-section {
+            background: rgba(20, 35, 50, 0.6);
+            border-radius: 12px;
+            border: 1px solid rgba(77, 184, 255, 0.3);
+            padding: 20px;
+            margin: 30px auto;
+            max-width: 900px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 1s ease, transform 1s ease;
+        }
+        
+        .toc-title {
+            text-align: center;
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            padding: 0 10px;
+        }
+        
+        .toc-title i {
+            font-size: 2.5rem;
+        }
+        
+        .toc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        
+        .toc-card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 15px;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(77, 184, 255, 0.2);
+            cursor: pointer;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        
+        .toc-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.3);
+            border-color: rgba(77, 184, 255, 0.5);
+            background: var(--card-hover);
+        }
+        
+        .toc-card i {
+            color: var(--primary-color);
+            font-size: 1.8rem;
+            min-width: 40px;
+            text-align: center;
+            margin-top: 5px;
+            flex-shrink: 0;
+        }
+        
+        .toc-card-content {
+            flex: 1;
+        }
+        
+        .toc-card-content h3 {
+            color: #fff;
+            margin-bottom: 8px;
+            font-size: 1.2rem;
+        }
+        
+        .toc-card-content ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .toc-card-content li {
+            position: relative;
+            padding-left: 20px;
+            margin-bottom: 6px;
+            font-size: 0.95rem;
+            color: #c0dfff;
+        }
+        
+        .toc-card-content li:before {
+            content: "•";
+            color: var(--primary-color);
+            position: absolute;
+            left: 0;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            padding: 15px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            border-top: 1px solid rgba(77, 184, 255, 0.3);
+            opacity: 0;
+            transition: opacity 1s ease;
+        }
+        
+        /* Адаптивность для мобильных устройств */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .toc-section {
+                padding: 15px;
+                margin: 20px auto;
+                border-radius: 10px;
+            }
+            
+            .toc-title {
+                font-size: 1.5rem;
+                margin-bottom: 15px;
+            }
+            
+            .toc-title i {
+                font-size: 2rem;
+            }
+            
+            .toc-grid {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+            
+            .toc-card {
+                padding: 12px;
+            }
+            
+            .toc-card i {
+                font-size: 1.5rem;
+            }
+            
+            .lock-icon {
+                font-size: 3rem;
+            }
+            
+            .progress-text {
+                font-size: 1rem;
+                top: calc(100% + 15px);
+            }
+        }
+        
+        /* Адаптивность для очень маленьких экранов */
+        @media (max-width: 480px) {
+            .toc-title {
+                font-size: 1.3rem;
+            }
+            
+            .toc-card {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+            }
+            
+            .toc-card i {
+                margin-bottom: 8px;
+            }
+            
+            .toc-card-content li {
+                padding-left: 0;
+            }
+            
+            .toc-card-content li:before {
+                display: none;
+            }
+            
+            .lock-wrapper {
+                max-width: 150px;
+            }
+            
+            .lock-icon {
+                font-size: 2.5rem;
+            }
+            
+            .progress-text {
+                font-size: 0.9rem;
+            }
+        }
+        
+        /* Планшеты в портретной ориентации */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .toc-grid {
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            }
+            
+            .toc-card {
+                padding: 18px;
+            }
+        }
+        
+        /* Десктопы с высоким разрешением */
+        @media (min-width: 1200px) {
+            .toc-section {
+                padding: 30px;
+            }
+            
+            .toc-grid {
+                gap: 25px;
+            }
+        }
+        
+        /* Ландшафтная ориентация для мобильных */
+        @media (max-height: 500px) and (orientation: landscape) {
+            .lock-wrapper {
+                max-width: 150px;
+            }
+            
+            .progress-text {
+                top: calc(100% + 10px);
+                font-size: 1rem;
+            }
+            
+            .toc-section {
+                margin: 15px auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Анимация замка -->
+    <div class="lock-container" id="lockContainer">
+        <div class="lock-wrapper">
+            <div class="lock-circle"></div>
+            <div class="lock-fill" id="lockFill"></div>
+            <i class="fas fa-lock lock-icon" id="lockIcon"></i>
+            <div class="lock-progress"></div>
+            <div class="progress-text" id="progressText">Загрузка системы безопасности...</div>
+        </div>
+    </div>
+    
+    <!-- Контент оглавления -->
+    <div class="container">
+        <div class="toc-section" id="tocSection">
+            <h2 class="toc-title">
+                <i class="fas fa-bookmark"></i> 
+                Структура Defensive Linux Security
+            </h2>
+            
+            <div class="toc-grid">
+                <div class="toc-card">
+                    <i class="fas fa-lock"></i>
+                    <div class="toc-card-content">
+                        <h3>Базовое укрепление системы</h3>
+                        <ul>
+                            <li>Автоматизация обновлений</li>
+                            <li>Удаление избыточного ПО</li>
+                            <li>Дисковая шифровка</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="toc-card">
+                    <i class="fas fa-user-shield"></i>
+                    <div class="toc-card-content">
+                        <h3>Управление доступом</h3>
+                        <ul>
+                            <li>Принцип минимальных привилегий</li>
+                            <li>Парольные политики</li>
+                            <li>Аутентификация по ключам</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="toc-card">
+                    <i class="fas fa-network-wired"></i>
+                    <div class="toc-card-content">
+                        <h3>Сетевая защита</h3>
+                        <ul>
+                            <li>Настройка файрволов</li>
+                            <li>Защита SSH</li>
+                            <li>Борьба с брутфорсом</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="toc-card">
+                    <i class="fas fa-shield-virus"></i>
+                    <div class="toc-card-content">
+                        <h3>Мандатный контроль доступа</h3>
+                        <ul>
+                            <li>SELinux для RHEL/CentOS</li>
+                            <li>AppArmor для Ubuntu/Debian</li>
+                            <li>Сравнение решений</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="toc-card">
+                    <i class="fas fa-search"></i>
+                    <div class="toc-card-content">
+                        <h3>Мониторинг и аудит</h3>
+                        <ul>
+                            <li>Сбор и анализ логов</li>
+                            <li>Системы обнаружения вторжений</li>
+                            <li>Контроль целостности файлов</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="toc-card">
+                    <i class="fas fa-tools"></i>
+                    <div class="toc-card-content">
+                        <h3>Специализированные инструменты</h3>
+                        <ul>
+                            <li>Sandboxing приложений</li>
+                            <li>Блокировка вредоносных доменов</li>
+                            <li>Сканирование на rootkit</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="toc-card">
+                    <i class="fas fa-file-download"></i>
+                    <div class="toc-card-content">
+                        <h3>Резервное копирование</h3>
+                        <ul>
+                            <li>Автоматизация бэкапов</li>
+                            <li>Шифрование резервных копий</li>
+                            <li>Проверка восстановления</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="toc-card">
+                    <i class="fas fa-users"></i>
+                    <div class="toc-card-content">
+                        <h3>Организационные практики</h3>
+                        <ul>
+                            <li>Обучение пользователей</li>
+                            <li>Политики соответствия</li>
+                            <li>Непрерывное улучшение</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <footer id="pageFooter">
+            <p>Defensive Linux Security | Многоуровневый подход к защите систем | На основе лучших практик индустрии</p>
+        </footer>
+    </div>
+
+    <script>
+        // Основная логика анимации замка
+        document.addEventListener('DOMContentLoaded', function() {
+            const lockContainer = document.getElementById('lockContainer');
+            const lockFill = document.getElementById('lockFill');
+            const lockIcon = document.getElementById('lockIcon');
+            const progressText = document.getElementById('progressText');
+            const tocSection = document.getElementById('tocSection');
+            const pageFooter = document.getElementById('pageFooter');
+            
+            // Функция для расчета времени анимации в зависимости от устройства
+            function getAnimationTimes() {
+                if (window.innerWidth <= 480) {
+                    return { fill: 2000, open: 1000, finish: 1000 };
+                } else if (window.innerWidth <= 768) {
+                    return { fill: 2500, open: 1200, finish: 1000 };
+                }
+                return { fill: 3000, open: 1500, finish: 1000 };
+            }
+            
+            // Запуск анимации
+            setTimeout(startLockAnimation, 300);
+            
+            function startLockAnimation() {
+                const times = getAnimationTimes();
+                
+                // Этап 1: Заполнение замка
+                lockFill.style.clipPath = 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)';
+                progressText.textContent = "Проверка целостности системы...";
+                
+                // Этап 2: Открытие замка
+                setTimeout(() => {
+                    lockIcon.classList.remove('fa-lock');
+                    lockIcon.classList.add('fa-lock-open');
+                    lockIcon.style.transform = 'translate(-50%, -50%) rotate(10deg)';
+                    progressText.textContent = "Открытие доступа к системе безопасности...";
+                    
+                    // Этап 3: Завершение анимации
+                    setTimeout(() => {
+                        lockContainer.style.opacity = '0';
+                        lockContainer.style.transform = 'scale(1.2)';
+                        
+                        setTimeout(() => {
+                            lockContainer.style.display = 'none';
+                            tocSection.style.opacity = '1';
+                            tocSection.style.transform = 'translateY(0)';
+                            pageFooter.style.opacity = '1';
+                            
+                            // Плавная прокрутка к началу контента
+                            setTimeout(() => {
+                                tocSection.scrollIntoView({ 
+                                    behavior: 'smooth', 
+                                    block: 'start'
+                                });
+                            }, 300);
+                        }, 1000);
+                    }, times.finish);
+                }, times.fill);
+            }
+            
+            // Обработчик изменения ориентации экрана
+            window.addEventListener('orientationchange', function() {
+                // При смене ориентации перезапускаем анимацию
+                if (lockContainer.style.display !== 'none') {
+                    lockContainer.style.display = 'flex';
+                    lockFill.style.clipPath = 'polygon(50% 50%, 50% 50%, 50% 50%, 50% 50%)';
+                    lockIcon.classList.remove('fa-lock-open');
+                    lockIcon.classList.add('fa-lock');
+                    lockIcon.style.transform = 'translate(-50%, -50%)';
+                    progressText.textContent = "Загрузка системы безопасности...";
+                    
+                    setTimeout(startLockAnimation, 500);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
