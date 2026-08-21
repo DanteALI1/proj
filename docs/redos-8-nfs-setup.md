@@ -4,7 +4,7 @@
 - адаптации с процедуры Astra Linux 1.6;
 - реальной разметки системного диска;
 - трёх дополнительных дисков по 2 ТБ из **ESXi 7**;
-- итоговой конфигурации экспорта для клиентов `10.0.51.175` и `10.0.51.233`.
+- итоговой конфигурации экспорта для клиентов `172.16.50.21` и `172.16.50.22`.
 
 Все команды на сервере выполняются от **root** (или через `sudo`).
 
@@ -15,12 +15,15 @@
 | Параметр | Значение |
 |---|---|
 | ОС сервера | РЕД ОС 8 |
-| IP сервера NFS | `10.0.128.248` |
-| Шлюз доступа (из исходной схемы) | `10.0.31.136` |
-| Клиенты NFS | `10.0.51.175`, `10.0.51.233` |
+| IP сервера NFS | `172.16.40.10` |
+| Шлюз доступа | `172.16.40.1` |
+| Сеть клиентов | `172.16.50.0/24` |
+| Клиенты NFS | `172.16.50.21`, `172.16.50.22` |
 | Точка хранения / экспорта | `/opt/share` |
 | Объём хранилища | ~6 ТБ (LVM: 3 × 2 ТБ) |
 | Гипервизор | VMware ESXi 7 |
+
+> Адреса в документе — **примерные** (документационная схема). Подставьте свои IP при внедрении.
 
 ### Куда попадают данные
 
@@ -219,21 +222,21 @@ systemctl status nfs-server.service
 
 #### Итоговая рабочая конфигурация (два хоста)
 
-Для двух конкретных клиентов **не указывайте `/23` у IP хоста** — иначе это будет сеть, а не отдельные машины.
+Для двух конкретных клиентов **не указывайте маску `/24` у IP хоста** — иначе это будет сеть, а не отдельные машины.
 
 ```bash
 cat > /etc/exports <<'EOF'
-/opt/share 10.0.51.175(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
-/opt/share 10.0.51.233(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
+/opt/share 172.16.50.21(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
+/opt/share 172.16.50.22(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
 EOF
 ```
 
-#### Если нужен весь сегмент `/23`
+#### Если нужен весь сегмент клиентов
 
-Одна строка на сеть `10.0.50.0/23` (диапазон `10.0.50.0`–`10.0.51.255`):
+Одна строка на сеть `172.16.50.0/24`:
 
 ```text
-/opt/share 10.0.50.0/23(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
+/opt/share 172.16.50.0/24(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
 ```
 
 ### 4.5. Пояснение опций экспорта
@@ -280,9 +283,9 @@ firewall-cmd --list-services
 Ограничение только сетью клиентов (рекомендуется):
 
 ```bash
-firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.50.0/23" service name="nfs" accept'
-firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.50.0/23" service name="mountd" accept'
-firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.50.0/23" service name="rpc-bind" accept'
+firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="172.16.50.0/24" service name="nfs" accept'
+firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="172.16.50.0/24" service name="mountd" accept'
+firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="172.16.50.0/24" service name="rpc-bind" accept'
 firewall-cmd --reload
 ```
 
@@ -317,14 +320,14 @@ systemctl enable --now nfs-client.target
 ### 7.2. Проверка доступности экспорта
 
 ```bash
-showmount -e 10.0.128.248
+showmount -e 172.16.40.10
 ```
 
 ### 7.3. Монтирование вручную
 
 ```bash
 mkdir -p /mnt/share
-mount -t nfs 10.0.128.248:/opt/share /mnt/share
+mount -t nfs 172.16.40.10:/opt/share /mnt/share
 df -h /mnt/share
 echo "NFS test $(date)" > /mnt/share/test.txt
 ls -la /mnt/share
@@ -333,7 +336,7 @@ ls -la /mnt/share
 ### 7.4. Постоянное монтирование (`/etc/fstab`)
 
 ```text
-10.0.128.248:/opt/share  /mnt/share  nfs  defaults,_netdev  0  0
+172.16.40.10:/opt/share  /mnt/share  nfs  defaults,_netdev  0  0
 ```
 
 Применить:
@@ -358,7 +361,7 @@ mkdir -p /media/nfs_share_autofs
 В `/etc/auto.nfs`:
 
 ```text
-server  -rw,soft,intr  10.0.128.248:/opt/share
+server  -rw,soft,intr  172.16.40.10:/opt/share
 ```
 
 ```bash
@@ -407,8 +410,8 @@ systemctl daemon-reload
 systemctl enable --now rpcbind.service nfs-server.service
 
 cat > /etc/exports <<'EOF'
-/opt/share 10.0.51.175(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
-/opt/share 10.0.51.233(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
+/opt/share 172.16.50.21(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
+/opt/share 172.16.50.22(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
 EOF
 exportfs -ra
 systemctl restart nfs-server.service
@@ -432,8 +435,8 @@ df -h /opt/share
 systemctl status nfs-server.service rpcbind.service
 journalctl -u nfs-server.service -xe
 exportfs -v
-showmount -e 10.0.128.248
-rpcinfo -p 10.0.128.248
+showmount -e 172.16.40.10
+rpcinfo -p 172.16.40.10
 firewall-cmd --list-all
 lsblk -f
 pvs; vgs; lvs
@@ -447,7 +450,7 @@ du -sh /opt/share
 | Дисков нет в `lsblk` | rescan SCSI / reboot ВМ / Hard Disk в ESXi |
 | `Access denied by server` | IP клиента в `/etc/exports`, `exportfs -ra` |
 | `Permission denied` при записи | права на `/opt/share`, `anonuid`/`anongid`, `no_root_squash` |
-| Клиент не видит экспорт | firewalld, маршрутизация, `nfs-server` |
+| Клиент не видит экспорт | firewalld, маршрутизация через `172.16.40.1`, `nfs-server` |
 | После reboot `/opt/share` пустой/на корне | `findmnt /opt/share`, строка UUID в `/etc/fstab` |
 | Закончилось место | `df -h /opt/share`; при необходимости расширить VG/LV |
 
@@ -467,7 +470,7 @@ df -h /opt/share
 
 1. Не экспортируйте `/` или `/home` целиком без необходимости.
 2. `no_root_squash` — только если это реально нужно приложениям; иначе используйте `root_squash` / `all_squash`.
-3. Ограничивайте доступ конкретными IP (как сейчас) или узкой подсетью.
+3. Ограничивайте доступ конкретными IP (как сейчас) или узкой подсетью `172.16.50.0/24`.
 4. Держите NFS в доверенной сети / VLAN; протокол сам по себе трафик не шифрует.
 5. Делайте бэкапы содержимого `/opt/share`.
 6. Следите за местом: `df -h /opt/share`.
@@ -483,10 +486,12 @@ df -h /opt/share
 | Диски хранилища | `/dev/sdb`, `/dev/sdc`, `/dev/sdd` по 2 ТБ |
 | VG / LV | `vg_nfs` / `lv_share` |
 | Точка монтирования | `/opt/share` (XFS, ~6,0 ТБ) |
-| Экспорт NFS | `/opt/share` → `10.0.51.175`, `10.0.51.233` |
+| Сервер NFS | `172.16.40.10` |
+| Шлюз | `172.16.40.1` |
+| Экспорт NFS | `/opt/share` → `172.16.50.21`, `172.16.50.22` |
 | Опции экспорта | `rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check` |
-| Куда пишутся данные клиентов | `/opt/share` на сервере `10.0.128.248` (диски sdb+sdc+sdd) |
+| Куда пишутся данные клиентов | `/opt/share` на сервере `172.16.40.10` (диски sdb+sdc+sdd) |
 
 ---
 
-*Документ подготовлен для РЕД ОС 8 по мотивам инструкции Astra Linux 1.6 и фактической конфигурации стенда (ESXi 7, 3×2 ТБ, LVM, NFS).*
+*Документ подготовлен для РЕД ОС 8 по мотивам инструкции Astra Linux 1.6 и конфигурации стенда (ESXi 7, 3×2 ТБ, LVM, NFS). IP-адреса в примерах демонстрационные.*
