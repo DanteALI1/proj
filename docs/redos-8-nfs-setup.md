@@ -44,6 +44,202 @@ id 1000
 
 ---
 
+## Подключение дополнительных дисков из ESXi 7 (3 × 2 ТБ)
+
+На ВМ через ESXi 7 добавлены **3 виртуальных диска по 2 ТБ**. В гостевой РЕД ОС их нужно: обнаружить → разметить → создать ФС → смонтировать → (опционально) отдать в NFS.
+
+Системный диск сейчас — `/dev/sda`. Новые диски обычно появятся как `/dev/sdb`, `/dev/sdc`, `/dev/sdd` (имена проверьте у себя).
+
+> Все команды ниже — от **root**. Операции необратимы: убедитесь, что берёте **новые** диски, а не `/dev/sda`.
+
+### 0. Что проверить в ESXi (если дисков ещё не видно в ОС)
+
+В настройках ВМ:
+- добавлены 3 Hard Disk по **2 TB**;
+- желательно контроллер **VMware Paravirtual (PVSCSI)** — лучше для производительности;
+- для дисков > 2 ТБ в госте используйте **GPT** (ниже так и делаем);
+- если диск добавили «на горячую», ВМ можно не перезагружать — достаточно rescan в госте.
+
+### 1. Обнаружение дисков в РЕД ОС
+
+Пересканировать SCSI-шину:
+
+```bash
+for host in /sys/class/scsi_host/host*; do
+  echo "- - -" > "$host/scan"
+done
+```
+
+Список блочных устройств:
+
+```bash
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL
+fdisk -l
+```
+
+Ожидаемо увидите три новых диска ~2 ТБ без разделов и без `MOUNTPOINT`, например:
+
+```text
+sdb  2T  disk
+sdc  2T  disk
+sdd  2T  disk
+```
+
+Если дисков нет — перезагрузите ВМ в ESXi или проверьте, что диски действительно добавлены к этой ВМ.
+
+Зафиксируйте имена:
+
+```bash
+lsblk -d -o NAME,SIZE,TYPE | grep disk
+```
+
+Дальше в примерах: `sdb`, `sdc`, `sdd`. Подставьте свои.
+
+### 2. Выбор схемы
+
+| Схема | Когда выбирать | Итог |
+|---|---|---|
+| **A. LVM на 3 диска** (рекомендуется) | одна большая NFS-шара | один том ~6 ТБ, например `/opt/share` |
+| **B. Три отдельных диска** | разные шары / разные задачи | `/opt/share1`, `/opt/share2`, `/opt/share3` по ~2 ТБ |
+
+Для вашего NFS-сценария логичнее **схема A**.
+
+---
+
+### Схема A. Один том ~6 ТБ через LVM → `/opt/share`
+
+#### A1. Пакеты LVM
+
+```bash
+dnf install -y lvm2
+```
+
+#### A2. GPT-раздел типа LVM на каждом диске
+
+```bash
+for disk in sdb sdc sdd; do
+  parted -s /dev/$disk mklabel gpt
+  parted -s /dev/$disk mkpart primary 0% 100%
+  parted -s /dev/$disk set 1 lvm on
+  partprobe /dev/$disk
+done
+
+lsblk /dev/sdb /dev/sdc /dev/sdd
+```
+
+Появятся разделы `sdb1`, `sdc1`, `sdd1`.
+
+#### A3. PV → VG → LV
+
+```bash
+pvcreate /dev/sdb1 /dev/sdc1 /dev/sdd1
+vgcreate vg_nfs /dev/sdb1 /dev/sdc1 /dev/sdd1
+vgdisplay vg_nfs
+
+# один логический том на всё свободное место
+lvcreate -l 100%FREE -n lv_share vg_nfs
+lvs
+```
+
+Устройство тома: `/dev/vg_nfs/lv_share` (или `/dev/mapper/vg_nfs-lv_share`).
+
+#### A4. Файловая система и монтирование
+
+На РЕД ОС / RHEL для больших томов данных обычно берут **XFS**:
+
+```bash
+mkfs.xfs -f /dev/vg_nfs/lv_share
+
+mkdir -p /opt/share
+mount /dev/vg_nfs/lv_share /opt/share
+df -Th /opt/share
+```
+
+Права под NFS (`anonuid=1000`):
+
+```bash
+chown 1000:1000 /opt/share
+chmod 777 /opt/share
+```
+
+Автомонтирование в `/etc/fstab` (по UUID надёжнее имени):
+
+```bash
+UUID=$(blkid -s UUID -o value /dev/vg_nfs/lv_share)
+echo "UUID=$UUID  /opt/share  xfs  defaults,nofail  0  0" >> /etc/fstab
+mount -a
+df -Th /opt/share
+```
+
+`nofail` — чтобы ВМ загрузилась даже если диск временно недоступен.
+
+Проверка свободного места (ожидается порядка **~6 ТБ** суммарно, минус служебные метаданные):
+
+```bash
+df -h /opt/share
+```
+
+Дальше экспортируйте `/opt/share` в `/etc/exports` как в разделе NFS ниже.
+
+---
+
+### Схема B. Три отдельных диска по 2 ТБ
+
+```bash
+i=1
+for disk in sdb sdc sdd; do
+  parted -s /dev/$disk mklabel gpt
+  parted -s /dev/$disk mkpart primary 0% 100%
+  partprobe /dev/$disk
+  mkfs.xfs -f /dev/${disk}1
+
+  mkdir -p /opt/share$i
+  mount /dev/${disk}1 /opt/share$i
+  chown 1000:1000 /opt/share$i
+  chmod 777 /opt/share$i
+
+  UUID=$(blkid -s UUID -o value /dev/${disk}1)
+  echo "UUID=$UUID  /opt/share$i  xfs  defaults,nofail  0  0" >> /etc/fstab
+  i=$((i+1))
+done
+
+mount -a
+df -Th /opt/share1 /opt/share2 /opt/share3
+```
+
+В `/etc/exports` можно отдать все три каталога отдельными строками.
+
+---
+
+### Полезные проверки и типичные ошибки
+
+```bash
+lsblk -f
+pvs; vgs; lvs          # для схемы A
+findmnt /opt/share
+cat /etc/fstab
+dmesg | tail -50
+```
+
+| Проблема | Что сделать |
+|---|---|
+| Дисков нет в `lsblk` | rescan SCSI или reboot ВМ; проверить Hard Disk в ESXi |
+| Случайно тронули `/dev/sda` | **стоп**; системный диск не трогать |
+| `mount` не поднимается после reboot | проверить UUID в `fstab`, `journalctl -xb` |
+| NFS отдаёт старый маленький `/opt/share` на `/` | убедиться, что `/opt/share` — это mountpoint нового тома: `findmnt /opt/share` |
+| Нужно расширить том позже | в ESXi увеличить VMDK → в госте `pvresize` / добавить диск в VG → `lvextend -r` |
+
+Расширение LV после добавления места (схема A, кратко):
+
+```bash
+# после увеличения диска/добавления PV в vg_nfs
+lvextend -l +100%FREE /dev/vg_nfs/lv_share
+xfs_growfs /opt/share
+df -h /opt/share
+```
+
+---
+
 ## Настройка NFS на РЕД ОС 8
 
 Все команды ниже выполняются от **root** (или через `sudo`).
