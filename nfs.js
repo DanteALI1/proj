@@ -56,11 +56,23 @@
 
   function wrapTables(root) {
     root.querySelectorAll("table").forEach((table) => {
-      if (table.parentElement?.classList.contains("table-wrap")) return;
-      const wrap = document.createElement("div");
-      wrap.className = "table-wrap";
-      table.replaceWith(wrap);
-      wrap.appendChild(table);
+      if (!table.parentElement?.classList.contains("table-wrap")) {
+        const wrap = document.createElement("div");
+        wrap.className = "table-wrap";
+        table.replaceWith(wrap);
+        wrap.appendChild(table);
+      }
+
+      const headers = [...table.querySelectorAll("thead th")].map((th) =>
+        th.textContent.trim()
+      );
+      if (!headers.length) return;
+
+      table.querySelectorAll("tbody tr").forEach((tr) => {
+        [...tr.children].forEach((cell, i) => {
+          if (headers[i]) cell.setAttribute("data-label", headers[i]);
+        });
+      });
     });
   }
 
