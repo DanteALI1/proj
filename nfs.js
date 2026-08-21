@@ -38,7 +38,6 @@
 
     const wasOpen = toc.classList.contains("open");
     if (wasOpen) {
-      // Закрываем sheet без авто-restore старого Y — сами прокрутим к цели
       toc.classList.remove("open");
       document.body.classList.remove("toc-open");
       document.body.style.top = "";
@@ -55,9 +54,12 @@
         window.matchMedia &&
         window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-      target.scrollIntoView({
+      const offset = 12;
+      const top =
+        target.getBoundingClientRect().top + window.pageYOffset - offset;
+      window.scrollTo({
+        top: Math.max(0, top),
         behavior: prefersReduced ? "auto" : "smooth",
-        block: "start",
       });
 
       if (updateHash) {
@@ -71,13 +73,12 @@
         }
       }
 
-      // Подсветка активного пункта
       tocList.querySelectorAll(".toc-link").forEach((el) => {
         el.classList.toggle("active", el.dataset.target === id);
       });
     };
 
-    window.setTimeout(navigate, wasOpen ? 80 : 0);
+    window.setTimeout(navigate, wasOpen ? 100 : 0);
     return true;
   }
 
@@ -146,6 +147,14 @@
       btn.className = "toc-link";
       btn.dataset.target = id;
       btn.textContent = h.textContent.replace(/^\d+\.\s*/, "");
+
+      // Прямой обработчик на каждой кнопке — без closest() по Text-node
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        scrollToHeading(id);
+      });
+
       li.appendChild(btn);
       tocList.appendChild(li);
     });
@@ -216,16 +225,6 @@
     }
   }
 
-  function onTocActivate(e) {
-    const btn = e.target.closest(".toc-link");
-    if (!btn || !toc.contains(btn)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    scrollToHeading(btn.dataset.target);
-  }
-
-  toc.addEventListener("click", onTocActivate, true);
-
   tocToggle?.addEventListener("click", (e) => {
     e.stopPropagation();
     setTocOpen(!toc.classList.contains("open"));
@@ -239,8 +238,9 @@
 
   document.addEventListener("click", (e) => {
     if (!toc.classList.contains("open")) return;
-    if (toc.contains(e.target) || tocToggle?.contains(e.target)) return;
-    if (tocBackdrop?.contains(e.target)) return;
+    const node = e.target instanceof Element ? e.target : e.target?.parentElement;
+    if (node && (toc.contains(node) || tocToggle?.contains(node))) return;
+    if (tocBackdrop?.contains(node)) return;
     setTocOpen(false);
   });
 
