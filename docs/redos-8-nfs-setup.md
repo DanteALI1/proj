@@ -1,569 +1,304 @@
-# Настройка и подключение удалённого хранилища NFS в РЕД ОС 8
+# Настройка NFS-сервера на РЕД ОС 8
 
-Полная инструкция по развёртыванию NFS-сервера и подключению NFS-клиента на **РЕД ОС 8** (Рабочая станция, Сервер графический, Сервер минимальный).
+Инструкция адаптирована с процедуры для Astra Linux 1.6 под РЕД ОС 8 (пакеты `nfs-utils`, служба `nfs-server`).
 
-Актуальные пакеты (ориентир по базе знаний РЕД ОС): `nfs-utils`, `nfs4-acl-tools`, при необходимости `autofs`.
+## Исходные данные
 
----
-
-## 1. Что такое NFS и когда его использовать
-
-**NFS (Network File System)** — сетевой протокол, позволяющий монтировать каталоги с удалённого сервера и работать с ними как с локальными.
-
-**Плюсы:**
-- централизованное хранение данных;
-- один раз разместили файлы на сервере — доступны всем клиентам;
-- экономия места на дисках клиентов;
-- прозрачная работа для приложений и пользователей.
-
-**Важно по безопасности:**
-- NFS по умолчанию **не шифрует** трафик;
-- аутентификация пользователей как в Samba/CIFS обычно не выполняется — доступ ограничивается **IP/хостами** и опциями экспорта;
-- для недоверенных сетей используйте VPN, изолированную VLAN или NFSv4 + Kerberos.
-
----
-
-## 2. Подготовка
-
-### На обеих машинах (сервер и клиент)
-
-1. Узнайте IP-адреса:
-
-```bash
-ip -br a
-hostname -I
-```
-
-2. Проверьте доступность по сети:
-
-```bash
-ping -c 3 <IP_сервера>
-```
-
-3. Обновите кэш репозиториев (по желанию — и систему):
-
-```bash
-sudo dnf makecache
-# при необходимости:
-# sudo dnf update
-```
-
-В примерах ниже:
-- **сервер:** `192.168.114.63`
-- **клиент:** `192.168.114.172`
-- **экспорт:** `/srv/nfs/share`
-- **точка монтирования на клиенте:** `/media/nfs_share`
-
-Подставьте свои значения.
-
----
-
-## 3. Настройка NFS-сервера (РЕД ОС 8)
-
-### 3.1. Установка пакетов и запуск службы
-
-```bash
-sudo dnf install -y nfs-utils nfs4-acl-tools
-sudo systemctl enable --now nfs-server.service
-sudo systemctl status nfs-server.service
-```
-
-Ожидаемый статус: `active (exited)` или `active (running)` — зависит от версии; главное, что unit включён и без ошибок.
-
-### 3.2. Создание каталога для экспорта
-
-Рекомендуется выделить отдельный каталог, например `/srv/nfs/share`:
-
-```bash
-sudo mkdir -p /srv/nfs/share
-sudo chown -R nobody:nobody /srv/nfs/share
-sudo chmod 0775 /srv/nfs/share
-```
-
-Пояснения:
-- `nobody:nobody` — удобно в паре с `root_squash` / `all_squash`;
-- если нужен конкретный владелец (например, пользователь с UID/GID `1000`):
-
-```bash
-sudo chown -R 1000:1000 /srv/nfs/share
-sudo chmod 0775 /srv/nfs/share
-```
-
-### 3.3. Конфигурация `/etc/exports`
-
-Основной файл сервера — `/etc/exports`. Изначально он пуст.
-
-**Правила оформления:**
-- один экспорт — одна строка;
-- между адресом клиента и `(` **не должно быть пробела**;
-- опции через запятую **без пробелов**;
-- несколько клиентов — через пробел;
-- комментарии — после `#`.
-
-Формат:
-
-```text
-/<путь_к_каталогу> <клиент>(<опции>) [<клиент>(<опции>) ...]
-```
-
-Откройте файл:
-
-```bash
-sudo nano /etc/exports
-```
-
-#### Пример: доступ одной машине с записью
-
-```text
-/srv/nfs/share 192.168.114.172(rw,sync,no_subtree_check,all_squash,anonuid=1000,anongid=1000)
-```
-
-#### Пример: доступ всей подсети
-
-```text
-/srv/nfs/share 192.168.114.0/24(rw,sync,no_subtree_check,root_squash)
-```
-
-#### Пример: только чтение для всех в подсети
-
-```text
-/srv/nfs/share 192.168.114.0/24(ro,sync,no_subtree_check,root_squash)
-```
-
-#### Пример: несколько клиентов с разными правами
-
-```text
-/srv/nfs/share 192.168.114.172(rw,sync,no_subtree_check) 192.168.114.180(ro,sync,no_subtree_check)
-```
-
-### 3.4. Основные опции экспорта
-
-| Опция | Назначение |
+| Роль | Значение |
 |---|---|
-| `ro` | только чтение |
-| `rw` | чтение и запись |
-| `sync` | запись на диск до подтверждения клиенту (надёжнее, медленнее) |
-| `async` | буферизация в памяти (быстрее, риск потери данных при сбое) |
-| `no_subtree_check` | без проверки прав на каждом уровне вложенности (обычно рекомендуется) |
-| `subtree_check` | проверка прав и у подкаталогов |
-| `root_squash` | root клиента → nobody на сервере (**по умолчанию**, безопаснее) |
-| `no_root_squash` | root клиента остаётся root на сервере (**не рекомендуется**) |
-| `all_squash` | все пользователи клиента → анонимный пользователь |
-| `anonuid=` / `anongid=` | UID/GID анонимного пользователя вместо nobody |
+| Сервер NFS | Машина с **РЕД ОС 8**, IP `10.0.128.248` |
+| Шлюз доступа | IP `10.0.31.136` |
+| Экспортируемый каталог | `/opt/share` |
+| Клиенты | из другой подсети `10.0.XX.XX` (обращение через шлюз/маршрутизацию) |
 
-Клиент можно указать как:
-- IP: `192.168.114.172`
-- подсеть: `192.168.114.0/24` или `192.168.114.0/255.255.255.0`
-- FQDN / hostname
-- шаблон: `*.example.local`
-- `*` — всем (только в доверенной изолированной сети)
+> В исходной схеме Astra Linux сервер был `10.0.128.248/16`. На РЕД ОС логика та же: публикуется `/opt/share`, к нему обращаются клиенты из другой подсети.
 
-Справка:
+---
+
+## Настройка NFS на РЕД ОС 8
+
+Все команды ниже выполняются от **root** (или через `sudo`).
+
+### 1. Установка NFS-сервера
+
+В РЕД ОС 8 аналог пакета `nfs-kernel-server` (Debian/Astra) — пакеты `nfs-utils` и при необходимости `nfs4-acl-tools`.  
+`autofs` на сервере обычно не обязателен (он нужен клиенту для автомонтирования); ставим, если требуется по вашей схеме.
 
 ```bash
-man exports
+dnf install -y nfs-utils nfs4-acl-tools
+dnf install -y autofs
 ```
 
-### 3.5. Применение экспорта
+> Установочный диск подключать не требуется, если настроены штатные репозитории РЕД ОС (`dnf repolist`).
+
+### 2. Создание разделяемой директории
 
 ```bash
-sudo exportfs -rav
-sudo exportfs -v
+mkdir -p /opt/share
 ```
 
-Или:
+Применяем права (аналог `nobody:nogroup` из Astra; в РЕД ОС / RHEL-подобных системах группа обычно `nobody`):
 
 ```bash
-sudo systemctl restart nfs-server.service
+chown nobody:nobody /opt/share
+chmod 777 /opt/share
 ```
 
-Проверка списка экспортов на самом сервере:
+### 3. Зависимость NFS от rpcbind (аналог правки UNIT-файла)
+
+В Astra правили symlink  
+`/etc/systemd/system/multi-user.target.wants/nfs-server.service`  
+и службу `nfs-kernel-server`.
+
+В РЕД ОС 8:
+
+- служба сервера: `nfs-server.service` (не `nfs-kernel-server`);
+- symlink в `multi-user.target.wants` **нельзя править напрямую** — после `systemctl enable` / обновлений правки могут пропасть;
+- корректный способ — drop-in override.
+
+Создайте override:
 
 ```bash
-sudo exportfs -s
+mkdir -p /etc/systemd/system/nfs-server.service.d
+nano /etc/systemd/system/nfs-server.service.d/override.conf
+```
+
+Содержимое файла:
+
+```ini
+[Unit]
+Requires=rpcbind.service
+After=rpcbind.service
+```
+
+Сохраните файл, затем:
+
+```bash
+systemctl daemon-reload
+systemctl enable --now rpcbind.service
+systemctl enable --now nfs-server.service
+systemctl restart nfs-server.service
+systemctl status nfs-server.service
+```
+
+### 4. Конфигурация экспорта `/etc/exports`
+
+Конфигурация сервиса — файл `/etc/exports`.
+
+```bash
+nano /etc/exports
+```
+
+#### Для одного клиента
+
+```text
+/opt/share <IP-клиента>(rw,nohide,all_squash,anonuid=1000,anongid=1000,no_subtree_check)
+```
+
+Пример (клиент = шлюз доступа):
+
+```text
+/opt/share 10.0.31.136(rw,nohide,all_squash,anonuid=1000,anongid=1000,no_subtree_check)
+```
+
+#### Для сети
+
+```text
+/opt/share <IP-сети>/<маска>(rw,nohide,all_squash,anonuid=1000,anongid=1000,subtree_check)
+```
+
+Пример для сети `10.0.0.0/16` (как в исходной схеме с `/16`):
+
+```text
+/opt/share 10.0.0.0/16(rw,nohide,all_squash,anonuid=1000,anongid=1000,subtree_check)
+```
+
+Или в формате с десятичной маской:
+
+```text
+/opt/share 10.0.0.0/255.255.0.0(rw,nohide,all_squash,anonuid=1000,anongid=1000,subtree_check)
+```
+
+**Важно:** между адресом клиента/сети и открывающей скобкой `(` пробела быть не должно.
+
+### 5. Пояснение параметров доступа
+
+`(rw,nohide,all_squash,anonuid=1000,anongid=1000,...)` — набор параметров доступа:
+
+| Параметр | Назначение |
+|---|---|
+| `rw` | чтение и запись (`ro` — только чтение) |
+| `nohide` | показывать нелокальные ресурсы (например, примонтированные через `mount --bind`); без неё NFS может их скрывать |
+| `all_squash` | все подключения идут от анонимного пользователя |
+| `anonuid=1000` | привязка анонимного пользователя к локальному UID `1000` |
+| `anongid=1000` | привязка анонимного пользователя к локальной группе GID `1000` |
+| `subtree_check` | проверка, что клиент обращается только к файлам внутри экспортируемого поддерева (безопаснее, чуть медленнее; по умолчанию в классическом NFS) |
+| `no_subtree_check` | отключение контроля поддерева (быстрее; допустимо, если экспорт совпадает с целым разделом диска) |
+
+В данном примере публикуется `/opt/share` на машине с РЕД ОС 8 и IP `10.0.128.248`, а обращаться будут из другой подсети `10.0.XX.XX`.
+
+Если используете `anonuid=1000` / `anongid=1000`, убедитесь, что на сервере существует пользователь/группа с этими ID, либо выровняйте владельца каталога:
+
+```bash
+# опционально, если UID/GID 1000 уже есть
+chown 1000:1000 /opt/share
+chmod 777 /opt/share
+```
+
+### 6. Применение изменений
+
+После правок `/etc/exports`:
+
+```bash
+exportfs -ra
+systemctl restart nfs-server.service
+```
+
+Проверка:
+
+```bash
+exportfs -v
 showmount -e localhost
 ```
 
-### 3.6. Firewall (firewalld)
+Ожидаемый результат — в списке экспортов есть `/opt/share`.
 
-Если firewall включён:
+---
 
-```bash
-sudo systemctl status firewalld
-```
+## Firewall (firewalld) — обязательно на РЕД ОС
 
-Откройте необходимые службы и перезагрузите правила:
+В Astra часто открывают порты отдельно; в РЕД ОС 8 штатно используют `firewalld`.
 
 ```bash
-sudo firewall-cmd --permanent --add-service=nfs
-sudo firewall-cmd --permanent --add-service=mountd
-sudo firewall-cmd --permanent --add-service=rpc-bind
-sudo firewall-cmd --reload
-sudo firewall-cmd --list-services
+systemctl status firewalld
+
+firewall-cmd --permanent --add-service=nfs
+firewall-cmd --permanent --add-service=mountd
+firewall-cmd --permanent --add-service=rpc-bind
+firewall-cmd --reload
+firewall-cmd --list-services
 ```
 
-Для ограниченного доступа только с подсети клиентов (рекомендуется):
+Ограничение только нужной сетью (рекомендуется):
 
 ```bash
-sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.114.0/24" service name="nfs" accept'
-sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.114.0/24" service name="mountd" accept'
-sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.114.0/24" service name="rpc-bind" accept'
-sudo firewall-cmd --reload
+firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.0.0/16" service name="nfs" accept'
+firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.0.0/16" service name="mountd" accept'
+firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.0.0/16" service name="rpc-bind" accept'
+firewall-cmd --reload
 ```
 
-### 3.7. SELinux (если включён Enforcing)
+---
 
-Проверка режима:
+## SELinux (если включён)
 
 ```bash
 getenforce
 ```
 
-Если каталог экспорта нестандартный, может потребоваться контекст:
+Если режим `Enforcing` и экспорт из `/opt/share` блокируется:
 
 ```bash
-sudo semanage fcontext -a -t nfs_t "/srv/nfs(/.*)?"
-sudo restorecon -Rv /srv/nfs
-```
-
-Разрешить NFS экспортировать любые каталоги (при необходимости):
-
-```bash
-sudo setsebool -P nfs_export_all_rw 1
-```
-
-Пакет для `semanage` (если нет):
-
-```bash
-sudo dnf install -y policycoreutils-python-utils
+dnf install -y policycoreutils-python-utils
+semanage fcontext -a -t nfs_t "/opt/share(/.*)?"
+restorecon -Rv /opt/share
+setsebool -P nfs_export_all_rw 1
 ```
 
 ---
 
-## 4. Настройка NFS-клиента (РЕД ОС 8)
+## Подключение с клиента (кратко)
 
-### 4.1. Установка и запуск
-
-```bash
-sudo dnf install -y nfs-utils
-sudo systemctl enable --now nfs-client.target
-```
-
-### 4.2. Проверка доступности экспорта
+На клиенте (РЕД ОС / Linux):
 
 ```bash
-showmount -e 192.168.114.63
+dnf install -y nfs-utils
+systemctl enable --now nfs-client.target
+
+showmount -e 10.0.128.248
+
+mkdir -p /mnt/share
+mount -t nfs 10.0.128.248:/opt/share /mnt/share
+df -h /mnt/share
 ```
 
-Пример ответа:
+Постоянное монтирование в `/etc/fstab`:
 
 ```text
-Export list for 192.168.114.63:
-/srv/nfs/share 192.168.114.172
+10.0.128.248:/opt/share  /mnt/share  nfs  defaults,_netdev  0  0
 ```
-
-Если команда не отвечает — проверьте сеть, firewall на сервере и статус `nfs-server`.
 
 ---
 
-## 5. Подключение хранилища на клиенте
+## Соответствие команд Astra Linux → РЕД ОС 8
 
-Есть три основных способа.
-
-### 5.1. Ручное монтирование (для проверки)
-
-```bash
-sudo mkdir -p /media/nfs_share
-sudo mount -t nfs 192.168.114.63:/srv/nfs/share /media/nfs_share
-```
-
-Проверка:
-
-```bash
-mount | grep nfs
-df -h /media/nfs_share
-ls -la /media/nfs_share
-```
-
-Проверка записи:
-
-```bash
-echo "NFS OK $(date)" | sudo tee /media/nfs_share/test.txt
-cat /media/nfs_share/test.txt
-```
-
-Отмонтирование:
-
-```bash
-sudo umount /media/nfs_share
-```
-
-**Важно:** после перезагрузки ручной mount пропадает.
-
-Полезные опции монтирования:
-
-```bash
-sudo mount -t nfs -o rw,hard,timeo=600,retrans=2,rsize=1048576,wsize=1048576 \
-  192.168.114.63:/srv/nfs/share /media/nfs_share
-```
-
-| Опция | Смысл |
+| Astra Linux 1.6 | РЕД ОС 8 |
 |---|---|
-| `hard` | при недоступности сервера операции ждут (для серверов/постоянных данных) |
-| `soft` | операции могут завершиться ошибкой (удобнее для ноутбуков) |
-| `intr` / `nointr` | возможность прерывания операций (зависит от версии NFS) |
-| `vers=4` / `vers=4.2` | явная версия протокола |
-| `rsize` / `wsize` | размер блоков чтения/записи |
-
-Точки монтирования в `/media` обычно видны на рабочем столе и в файловых менеджерах (Nemo/Caja).
-
-### 5.2. Автомонтирование через `/etc/fstab` (постоянное)
-
-Создайте точку монтирования:
-
-```bash
-sudo mkdir -p /media/nfs_share
-```
-
-Добавьте строку в `/etc/fstab`:
-
-```bash
-sudo nano /etc/fstab
-```
-
-Минимальный вариант:
-
-```text
-192.168.114.63:/srv/nfs/share  /media/nfs_share  nfs  defaults  0  0
-```
-
-Практичный вариант для рабочих станций/серверов:
-
-```text
-192.168.114.63:/srv/nfs/share  /media/nfs_share  nfs  rw,_netdev,hard,timeo=600,retrans=2,x-systemd.automount  0  0
-```
-
-Пояснения:
-- `_netdev` — монтировать после поднятия сети;
-- `x-systemd.automount` — монтировать при первом обращении (снижает риск зависания при загрузке, если сервер недоступен).
-
-Применить без перезагрузки:
-
-```bash
-sudo systemctl daemon-reload
-sudo mount -a
-# или:
-sudo mount /media/nfs_share
-```
-
-Монтирование «по требованию» (не при старте ОС):
-
-```text
-192.168.114.63:/srv/nfs/share  /media/nfs_share  nfs  noauto,defaults  0  0
-```
-
-Затем:
-
-```bash
-sudo mount /media/nfs_share
-sudo umount /media/nfs_share
-```
-
-**Замечание для ноутбуков:** если NFS в `fstab` без `_netdev`/`automount`/`autofs`, при недоступности сети возможны зависания при выключении/сне. Для ноутбуков предпочтительнее **autofs**.
-
-### 5.3. Автомонтирование через `autofs` (по обращению)
-
-Подходит, когда ресурс нужен не постоянно.
-
-```bash
-sudo dnf install -y autofs
-sudo mkdir -p /media/nfs_share_autofs
-```
-
-В `/etc/auto.master` добавьте:
-
-```text
-/media/nfs_share_autofs  /etc/auto.nfs  timeout=120  -browse
-```
-
-Создайте `/etc/auto.nfs`:
-
-```bash
-sudo nano /etc/auto.nfs
-```
-
-Содержимое:
-
-```text
-server  -rw,soft,intr,rsize=8192,wsize=8192  192.168.114.63:/srv/nfs/share
-```
-
-Где:
-- `server` — имя подкаталога, который появится в `/media/nfs_share_autofs/`;
-- после обращения путь будет: `/media/nfs_share_autofs/server`.
-
-Запуск:
-
-```bash
-sudo systemctl enable --now autofs
-sudo systemctl restart autofs
-```
-
-Проверка:
-
-```bash
-ls /media/nfs_share_autofs/server
-df -h /media/nfs_share_autofs/server
-```
-
-При отсутствии активности ресурс отмонтируется через заданный timeout.
-
-Альтернативный вариант из документации РЕД ОС (корень `/nfs`):
-
-```text
-# /etc/auto.master
-/nfs  /etc/auto.nfs  --timeout=60
-```
-
-```text
-# /etc/auto.nfs
-server  -rw,soft,intr,rsize=8192,wsize=8192  192.168.114.63:/srv/nfs/share
-```
+| `apt install nfs-kernel-server` | `dnf install nfs-utils nfs4-acl-tools` |
+| `apt install autofs` | `dnf install autofs` |
+| `nobody:nogroup` | `nobody:nobody` |
+| служба `nfs-kernel-server` | служба `nfs-server` |
+| правка unit в `multi-user.target.wants/...` | drop-in `/etc/systemd/system/nfs-server.service.d/override.conf` |
+| `/etc/exports` | `/etc/exports` (формат тот же) |
+| `exportfs -ra` | `exportfs -ra` |
+| `systemctl restart nfs-kernel-server.service` | `systemctl restart nfs-server.service` |
 
 ---
 
-## 6. Типовой сценарий «с нуля» (краткий чеклист)
-
-### На сервере
+## Чеклист «с нуля» (копипаст)
 
 ```bash
-sudo dnf install -y nfs-utils nfs4-acl-tools
-sudo mkdir -p /srv/nfs/share
-sudo chown nobody:nobody /srv/nfs/share
-sudo chmod 0775 /srv/nfs/share
+# 1. Пакеты
+dnf install -y nfs-utils nfs4-acl-tools
 
-echo '/srv/nfs/share 192.168.114.0/24(rw,sync,no_subtree_check,root_squash)' | sudo tee -a /etc/exports
+# 2. Каталог
+mkdir -p /opt/share
+chown nobody:nobody /opt/share
+chmod 777 /opt/share
 
-sudo systemctl enable --now nfs-server.service
-sudo exportfs -rav
+# 3. Зависимость от rpcbind
+mkdir -p /etc/systemd/system/nfs-server.service.d
+cat > /etc/systemd/system/nfs-server.service.d/override.conf <<'EOF'
+[Unit]
+Requires=rpcbind.service
+After=rpcbind.service
+EOF
+systemctl daemon-reload
+systemctl enable --now rpcbind.service
+systemctl enable --now nfs-server.service
 
-sudo firewall-cmd --permanent --add-service=nfs
-sudo firewall-cmd --permanent --add-service=mountd
-sudo firewall-cmd --permanent --add-service=rpc-bind
-sudo firewall-cmd --reload
-```
+# 4. Экспорт (пример для сети 10.0.0.0/16)
+cat >> /etc/exports <<'EOF'
+/opt/share 10.0.0.0/16(rw,nohide,all_squash,anonuid=1000,anongid=1000,subtree_check)
+EOF
+exportfs -ra
+systemctl restart nfs-server.service
 
-### На клиенте
+# 5. Firewall
+firewall-cmd --permanent --add-service=nfs
+firewall-cmd --permanent --add-service=mountd
+firewall-cmd --permanent --add-service=rpc-bind
+firewall-cmd --reload
 
-```bash
-sudo dnf install -y nfs-utils
-sudo systemctl enable --now nfs-client.target
-showmount -e 192.168.114.63
-
-sudo mkdir -p /media/nfs_share
-echo '192.168.114.63:/srv/nfs/share  /media/nfs_share  nfs  defaults,_netdev  0  0' | sudo tee -a /etc/fstab
-sudo mount -a
-df -h /media/nfs_share
-```
-
----
-
-## 7. Диагностика и устранение проблем
-
-### Службы на сервере
-
-```bash
-sudo systemctl status nfs-server.service
-sudo systemctl status rpcbind.service
-sudo journalctl -u nfs-server.service -xe
-```
-
-### Что экспортируется
-
-```bash
-sudo exportfs -v
-showmount -e <IP_сервера>
-```
-
-### Сеть и порты
-
-```bash
-# с клиента
-ping <IP_сервера>
-rpcinfo -p <IP_сервера>
-```
-
-Типичные порты/службы: `nfs`, `mountd`, `rpcbind` (через firewalld-сервисы).
-
-### Ошибки монтирования
-
-| Симптом | Что проверить |
-|---|---|
-| `Connection refused` / timeout | firewall, `nfs-server`, сеть |
-| `Access denied by server` | IP клиента в `/etc/exports`, `exportfs -rav` |
-| `Permission denied` при записи | владельцы/права каталога, `root_squash`/`all_squash`/`anonuid` |
-| Зависание при загрузке клиента | `_netdev`, `x-systemd.automount` или `autofs` |
-| SELinux AVC | `ausearch -m avc -ts recent`, контекст `nfs_t`, boolean |
-
-Проверка, что клиент видит ресурс с нужного IP:
-
-```bash
-ip -br a
-# IP клиента должен попадать под правило в /etc/exports
-```
-
-Права на сервере после `root_squash`:
-- локальный `root` на клиенте **не** имеет root-прав на сервере;
-- для записи обычно нужны корректные `anonuid`/`anongid` или права каталога на `nobody`/нужную группу.
-
-Пересоздание экспорта «с нуля»:
-
-```bash
-sudo exportfs -ua
-sudo exportfs -rav
-```
-
----
-
-## 8. Рекомендации по безопасности и эксплуатации
-
-1. **Не экспортируйте** `/` или домашние каталоги целиком без необходимости.
-2. Ограничивайте доступ **конкретными IP/подсетями**, не используйте `*` в продакшене.
-3. Оставляйте `root_squash` включённым; `no_root_squash` — только для осознанных служебных сценариев.
-4. Держите NFS в **доверенной сети** или поверх VPN.
-5. Делайте бэкапы каталога экспорта на сервере.
-6. Для высокой нагрузки при необходимости настраивайте `rsize`/`wsize`, отдельный NIC, мониторинг диска и сети.
-7. Для виртуализации (например, РЕД Вирт) не размещайте критичный NFS-сервер на том же хосте, который от него зависит как от storage domain.
-
----
-
-## 9. Полезные команды (шпаргалка)
-
-```bash
-# сервер
-sudo systemctl enable --now nfs-server
-sudo exportfs -rav
-sudo exportfs -v
+# 6. Проверка
+exportfs -v
 showmount -e localhost
-
-# клиент
-showmount -e <IP_сервера>
-sudo mount -t nfs <IP>:/путь /точка
-mount | grep nfs
-df -hT | grep nfs
-sudo umount /точка
-
-# firewall
-sudo firewall-cmd --list-all
 ```
 
 ---
 
-## 10. Ссылки на официальную документацию
+## Диагностика
 
-- [Настройка NFS (база знаний РЕД ОС 8)](https://redos.red-soft.ru/base/redos-8_0/8_0-network/8_0-nfs/)
-- [Подключение сетевых директорий с помощью NFS](https://redos.red-soft.ru/base/redos-8_0/8_0-administation/8_0-domain-redos/8_0-share/8_0-nfs-mount/)
+```bash
+systemctl status nfs-server.service rpcbind.service
+journalctl -u nfs-server.service -xe
+exportfs -v
+showmount -e 10.0.128.248
+rpcinfo -p 10.0.128.248
+firewall-cmd --list-all
+```
 
----
-
-*Инструкция ориентирована на РЕД ОС 8 и соответствует типовым практикам RHEL-совместимых систем с пакетом `nfs-utils`.*
+Типовые проблемы:
+- клиент не видит экспорт → firewall / `exports` / маршрутизация через шлюз `10.0.31.136`;
+- `Permission denied` при записи → `anonuid`/`anongid` и права на `/opt/share`;
+- зависание mount → сеть между подсетями, `rpcbind`, порты NFS.
