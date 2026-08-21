@@ -5,33 +5,51 @@
   const tocToggle = document.getElementById("toc-toggle");
   const tocBackdrop = document.getElementById("toc-backdrop");
   const mdUrl = "docs/redos-8-nfs-setup.md";
+  let scrollLockY = 0;
 
   function setTocOpen(open) {
-    toc.classList.toggle("open", open);
-    tocToggle?.setAttribute("aria-expanded", String(open));
-    document.body.classList.toggle("toc-open", open);
-    if (tocBackdrop) {
-      tocBackdrop.hidden = !open;
-      tocBackdrop.classList.toggle("show", open);
+    const isOpen = toc.classList.contains("open");
+    if (open === isOpen) {
+      // всё равно синхронизируем служебные классы
+    }
+
+    if (open) {
+      scrollLockY = window.scrollY || window.pageYOffset || 0;
+      toc.classList.add("open");
+      document.body.classList.add("toc-open");
+      document.body.style.top = `-${scrollLockY}px`;
+      tocToggle?.setAttribute("aria-expanded", "true");
+      if (tocBackdrop) {
+        tocBackdrop.hidden = false;
+        tocBackdrop.classList.add("show");
+      }
+    } else {
+      toc.classList.remove("open");
+      document.body.classList.remove("toc-open");
+      document.body.style.top = "";
+      tocToggle?.setAttribute("aria-expanded", "false");
+      if (tocBackdrop) {
+        tocBackdrop.classList.remove("show");
+        tocBackdrop.hidden = true;
+      }
     }
   }
 
-  function scrollToHeading(id, { updateHash = true } = {}) {
+  function scrollToHeading(id, { updateHash = true, restoreLock = false } = {}) {
     const target = document.getElementById(id);
     if (!target) return false;
 
-    // На мобиле body.toc-open { overflow:hidden } блокирует scrollIntoView —
-    // сначала закрываем оглавление, затем скроллим.
+    const wasOpen = toc.classList.contains("open");
     setTocOpen(false);
 
-    const go = () => {
-      const top =
-        target.getBoundingClientRect().top +
-        window.pageYOffset -
-        Math.max(12, parseInt(getComputedStyle(target).scrollMarginTop, 10) || 12);
+    // Если оглавление держало position:fixed — возвращаем прежний Y,
+    // затем едем к целевому разделу.
+    if (wasOpen || restoreLock) {
+      window.scrollTo(0, scrollLockY);
+    }
 
-      window.scrollTo({ top, behavior: "smooth" });
-
+    const navigate = () => {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
       if (updateHash) {
         const next = `#${id}`;
         if (location.hash !== next) {
@@ -44,10 +62,9 @@
       }
     };
 
-    // Два кадра: дождаться снятия overflow:hidden и пересчёта layout
-    requestAnimationFrame(() => {
-      requestAnimationFrame(go);
-    });
+    // Небольшая задержка: мобильные браузеры иначе игнорируют scroll
+    // сразу после снятия position:fixed / overflow:hidden.
+    window.setTimeout(navigate, 60);
     return true;
   }
 
@@ -114,11 +131,6 @@
       const a = document.createElement("a");
       a.href = `#${id}`;
       a.textContent = h.textContent.replace(/^\d+\.\s*/, "");
-      a.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        scrollToHeading(id);
-      });
       li.appendChild(a);
       tocList.appendChild(li);
     });
@@ -189,7 +201,22 @@
     }
   }
 
-  tocToggle?.addEventListener("click", () => {
+  // Делегирование в capture: надёжнее на тач-устройствах
+  toc.addEventListener(
+    "click",
+    (e) => {
+      const a = e.target.closest("a[href^='#']");
+      if (!a || !toc.contains(a)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const id = a.getAttribute("href").slice(1);
+      scrollToHeading(id);
+    },
+    true
+  );
+
+  tocToggle?.addEventListener("click", (e) => {
+    e.stopPropagation();
     setTocOpen(!toc.classList.contains("open"));
   });
 

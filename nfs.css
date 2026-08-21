@@ -55,8 +55,11 @@ body {
 }
 
 body.toc-open {
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
   overflow: hidden;
-  touch-action: none;
 }
 
 body::before {
