@@ -3,6 +3,7 @@
   const tocList = document.getElementById("toc-list");
   const toc = document.getElementById("toc");
   const tocToggle = document.getElementById("toc-toggle");
+  const tocBackdrop = document.getElementById("toc-backdrop");
   const mdUrl = "docs/redos-8-nfs-setup.md";
 
   function slugify(text) {
@@ -12,6 +13,16 @@
       .trim()
       .replace(/\s+/g, "-")
       .slice(0, 80);
+  }
+
+  function setTocOpen(open) {
+    toc.classList.toggle("open", open);
+    tocToggle?.setAttribute("aria-expanded", String(open));
+    document.body.classList.toggle("toc-open", open);
+    if (tocBackdrop) {
+      tocBackdrop.hidden = !open;
+      tocBackdrop.classList.toggle("show", open);
+    }
   }
 
   function enhanceCodeBlocks(root) {
@@ -43,6 +54,16 @@
     });
   }
 
+  function wrapTables(root) {
+    root.querySelectorAll("table").forEach((table) => {
+      if (table.parentElement?.classList.contains("table-wrap")) return;
+      const wrap = document.createElement("div");
+      wrap.className = "table-wrap";
+      table.replaceWith(wrap);
+      wrap.appendChild(table);
+    });
+  }
+
   function buildToc(root) {
     const headings = [...root.querySelectorAll("h2")];
     tocList.innerHTML = "";
@@ -61,10 +82,7 @@
       const a = document.createElement("a");
       a.href = `#${id}`;
       a.textContent = h.textContent.replace(/^\d+\.\s*/, "");
-      a.addEventListener("click", () => {
-        toc.classList.remove("open");
-        tocToggle?.setAttribute("aria-expanded", "false");
-      });
+      a.addEventListener("click", () => setTocOpen(false));
       li.appendChild(a);
       tocList.appendChild(li);
     });
@@ -80,7 +98,7 @@
           });
         });
       },
-      { rootMargin: "-20% 0px -65% 0px", threshold: 0 }
+      { rootMargin: "-18% 0px -68% 0px", threshold: 0 }
     );
     headings.forEach((h) => observer.observe(h));
   }
@@ -100,6 +118,7 @@
 
     docBody.innerHTML = marked.parse(md);
     enhanceCodeBlocks(docBody);
+    wrapTables(docBody);
     buildToc(docBody);
   }
 
@@ -125,15 +144,20 @@
   }
 
   tocToggle?.addEventListener("click", () => {
-    const open = toc.classList.toggle("open");
-    tocToggle.setAttribute("aria-expanded", String(open));
+    setTocOpen(!toc.classList.contains("open"));
+  });
+
+  tocBackdrop?.addEventListener("click", () => setTocOpen(false));
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setTocOpen(false);
   });
 
   document.addEventListener("click", (e) => {
     if (!toc.classList.contains("open")) return;
-    if (toc.contains(e.target) || tocToggle.contains(e.target)) return;
-    toc.classList.remove("open");
-    tocToggle.setAttribute("aria-expanded", "false");
+    if (toc.contains(e.target) || tocToggle?.contains(e.target)) return;
+    if (tocBackdrop?.contains(e.target)) return;
+    setTocOpen(false);
   });
 
   loadDoc();
