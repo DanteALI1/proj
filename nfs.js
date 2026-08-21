@@ -6,15 +6,6 @@
   const tocBackdrop = document.getElementById("toc-backdrop");
   const mdUrl = "docs/redos-8-nfs-setup.md";
 
-  function slugify(text) {
-    return text
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}\s-]/gu, "")
-      .trim()
-      .replace(/\s+/g, "-")
-      .slice(0, 80);
-  }
-
   function setTocOpen(open) {
     toc.classList.toggle("open", open);
     tocToggle?.setAttribute("aria-expanded", String(open));
@@ -23,6 +14,41 @@
       tocBackdrop.hidden = !open;
       tocBackdrop.classList.toggle("show", open);
     }
+  }
+
+  function scrollToHeading(id, { updateHash = true } = {}) {
+    const target = document.getElementById(id);
+    if (!target) return false;
+
+    // На мобиле body.toc-open { overflow:hidden } блокирует scrollIntoView —
+    // сначала закрываем оглавление, затем скроллим.
+    setTocOpen(false);
+
+    const go = () => {
+      const top =
+        target.getBoundingClientRect().top +
+        window.pageYOffset -
+        Math.max(12, parseInt(getComputedStyle(target).scrollMarginTop, 10) || 12);
+
+      window.scrollTo({ top, behavior: "smooth" });
+
+      if (updateHash) {
+        const next = `#${id}`;
+        if (location.hash !== next) {
+          try {
+            history.pushState(null, "", next);
+          } catch {
+            location.hash = id;
+          }
+        }
+      }
+    };
+
+    // Два кадра: дождаться снятия overflow:hidden и пересчёта layout
+    requestAnimationFrame(() => {
+      requestAnimationFrame(go);
+    });
+    return true;
   }
 
   function enhanceCodeBlocks(root) {
@@ -79,22 +105,20 @@
   function buildToc(root) {
     const headings = [...root.querySelectorAll("h2")];
     tocList.innerHTML = "";
-    const used = new Set();
 
-    headings.forEach((h) => {
-      let id = h.id || slugify(h.textContent);
-      let n = 1;
-      while (used.has(id)) {
-        id = `${slugify(h.textContent)}-${n++}`;
-      }
-      used.add(id);
+    headings.forEach((h, index) => {
+      const id = `section-${index + 1}`;
       h.id = id;
 
       const li = document.createElement("li");
       const a = document.createElement("a");
       a.href = `#${id}`;
       a.textContent = h.textContent.replace(/^\d+\.\s*/, "");
-      a.addEventListener("click", () => setTocOpen(false));
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        scrollToHeading(id);
+      });
       li.appendChild(a);
       tocList.appendChild(li);
     });
@@ -115,6 +139,15 @@
     headings.forEach((h) => observer.observe(h));
   }
 
+  function jumpFromHash() {
+    const raw = location.hash.replace(/^#/, "");
+    if (!raw) return;
+    const id = decodeURIComponent(raw);
+    if (document.getElementById(id)) {
+      scrollToHeading(id, { updateHash: false });
+    }
+  }
+
   function renderMarkdown(md) {
     if (typeof marked === "undefined") {
       docBody.innerHTML = `<pre>${md.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]))}</pre>`;
@@ -124,7 +157,7 @@
     marked.setOptions({
       gfm: true,
       breaks: false,
-      headerIds: true,
+      headerIds: false,
       mangle: false,
     });
 
@@ -132,6 +165,7 @@
     enhanceCodeBlocks(docBody);
     wrapTables(docBody);
     buildToc(docBody);
+    jumpFromHash();
   }
 
   async function loadDoc() {
@@ -171,6 +205,9 @@
     if (tocBackdrop?.contains(e.target)) return;
     setTocOpen(false);
   });
+
+  window.addEventListener("hashchange", jumpFromHash);
+  window.addEventListener("popstate", jumpFromHash);
 
   loadDoc();
 })();
