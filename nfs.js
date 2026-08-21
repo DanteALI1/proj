@@ -32,6 +32,7 @@
         tocBackdrop.classList.remove("show");
         tocBackdrop.hidden = true;
       }
+      window.scrollTo(0, scrollLockY);
     }
   }
 
