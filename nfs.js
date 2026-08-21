@@ -224,17 +224,7 @@
     scrollToHeading(btn.dataset.target);
   }
 
-  // click + pointerup — надёжнее на тач-экранах
   toc.addEventListener("click", onTocActivate, true);
-  toc.addEventListener(
-    "pointerup",
-    (e) => {
-      if (e.pointerType === "touch" || e.pointerType === "pen") {
-        onTocActivate(e);
-      }
-    },
-    true
-  );
 
   tocToggle?.addEventListener("click", (e) => {
     e.stopPropagation();
