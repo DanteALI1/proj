@@ -316,23 +316,32 @@ video {
   gap: 0.15rem;
 }
 
-.toc a {
+.toc a,
+.toc-link {
   display: flex;
   align-items: center;
+  width: 100%;
   min-height: 2.4rem;
   padding: 0.45rem 0.6rem;
+  border: 0;
   border-radius: 8px;
+  background: transparent;
   color: var(--ink-soft);
   text-decoration: none;
+  text-align: left;
+  font: inherit;
   font-size: 0.9rem;
   line-height: 1.35;
   border-left: 2px solid transparent;
+  cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
 
 .toc a:hover,
-.toc a.active {
+.toc a.active,
+.toc-link:hover,
+.toc-link.active {
   background: rgba(10, 92, 99, 0.08);
   color: var(--brand-deep);
   border-left-color: var(--brand);

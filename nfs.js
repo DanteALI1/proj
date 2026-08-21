@@ -8,11 +8,6 @@
   let scrollLockY = 0;
 
   function setTocOpen(open) {
-    const isOpen = toc.classList.contains("open");
-    if (open === isOpen) {
-      // всё равно синхронизируем служебные классы
-    }
-
     if (open) {
       scrollLockY = window.scrollY || window.pageYOffset || 0;
       toc.classList.add("open");
@@ -23,7 +18,27 @@
         tocBackdrop.hidden = false;
         tocBackdrop.classList.add("show");
       }
-    } else {
+      return;
+    }
+
+    toc.classList.remove("open");
+    document.body.classList.remove("toc-open");
+    document.body.style.top = "";
+    tocToggle?.setAttribute("aria-expanded", "false");
+    if (tocBackdrop) {
+      tocBackdrop.classList.remove("show");
+      tocBackdrop.hidden = true;
+    }
+    window.scrollTo(0, scrollLockY);
+  }
+
+  function scrollToHeading(id, { updateHash = true } = {}) {
+    const target = document.getElementById(id);
+    if (!target) return false;
+
+    const wasOpen = toc.classList.contains("open");
+    if (wasOpen) {
+      // Закрываем sheet без авто-restore старого Y — сами прокрутим к цели
       toc.classList.remove("open");
       document.body.classList.remove("toc-open");
       document.body.style.top = "";
@@ -34,23 +49,17 @@
       }
       window.scrollTo(0, scrollLockY);
     }
-  }
-
-  function scrollToHeading(id, { updateHash = true, restoreLock = false } = {}) {
-    const target = document.getElementById(id);
-    if (!target) return false;
-
-    const wasOpen = toc.classList.contains("open");
-    setTocOpen(false);
-
-    // Если оглавление держало position:fixed — возвращаем прежний Y,
-    // затем едем к целевому разделу.
-    if (wasOpen || restoreLock) {
-      window.scrollTo(0, scrollLockY);
-    }
 
     const navigate = () => {
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      const prefersReduced =
+        window.matchMedia &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      target.scrollIntoView({
+        behavior: prefersReduced ? "auto" : "smooth",
+        block: "start",
+      });
+
       if (updateHash) {
         const next = `#${id}`;
         if (location.hash !== next) {
@@ -61,11 +70,14 @@
           }
         }
       }
+
+      // Подсветка активного пункта
+      tocList.querySelectorAll(".toc-link").forEach((el) => {
+        el.classList.toggle("active", el.dataset.target === id);
+      });
     };
 
-    // Небольшая задержка: мобильные браузеры иначе игнорируют scroll
-    // сразу после снятия position:fixed / overflow:hidden.
-    window.setTimeout(navigate, 60);
+    window.setTimeout(navigate, wasOpen ? 80 : 0);
     return true;
   }
 
@@ -129,21 +141,23 @@
       h.id = id;
 
       const li = document.createElement("li");
-      const a = document.createElement("a");
-      a.href = `#${id}`;
-      a.textContent = h.textContent.replace(/^\d+\.\s*/, "");
-      li.appendChild(a);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "toc-link";
+      btn.dataset.target = id;
+      btn.textContent = h.textContent.replace(/^\d+\.\s*/, "");
+      li.appendChild(btn);
       tocList.appendChild(li);
     });
 
-    const links = [...tocList.querySelectorAll("a")];
+    const links = [...tocList.querySelectorAll(".toc-link")];
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (!entry.isIntersecting) return;
           const id = entry.target.id;
           links.forEach((link) => {
-            link.classList.toggle("active", link.getAttribute("href") === `#${id}`);
+            link.classList.toggle("active", link.dataset.target === id);
           });
         });
       },
@@ -202,16 +216,22 @@
     }
   }
 
-  // Делегирование в capture: надёжнее на тач-устройствах
+  function onTocActivate(e) {
+    const btn = e.target.closest(".toc-link");
+    if (!btn || !toc.contains(btn)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    scrollToHeading(btn.dataset.target);
+  }
+
+  // click + pointerup — надёжнее на тач-экранах
+  toc.addEventListener("click", onTocActivate, true);
   toc.addEventListener(
-    "click",
+    "pointerup",
     (e) => {
-      const a = e.target.closest("a[href^='#']");
-      if (!a || !toc.contains(a)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const id = a.getAttribute("href").slice(1);
-      scrollToHeading(id);
+      if (e.pointerType === "touch" || e.pointerType === "pen") {
+        onTocActivate(e);
+      }
     },
     true
   );
