@@ -17,3 +17,6 @@
 ### Метрики `/opt/share` в Zabbix 7 (RU)
 - Markdown: [docs/redos-8-zabbix-nfs-share-items.md](docs/redos-8-zabbix-nfs-share-items.md)
 - Веб: [zabbix-nfs-items.html](zabbix-nfs-items.html)
+
+### Сохранение в PDF
+На любой странице инструкции нажмите **Сохранить в PDF** (в шапке) и в диалоге печати выберите «Сохранить как PDF».

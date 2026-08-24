@@ -248,5 +248,44 @@
   window.addEventListener("hashchange", jumpFromHash);
   window.addEventListener("popstate", jumpFromHash);
 
+  function setupPdfButton() {
+    if (document.querySelector(".pdf-btn")) return;
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pdf-btn";
+    btn.setAttribute("aria-label", "Сохранить страницу в PDF");
+    btn.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h5"/></svg>' +
+      "<span>Сохранить в PDF</span>";
+    btn.addEventListener("click", () => {
+      setTocOpen(false);
+      // Дать браузеру закрыть оглавление перед диалогом печати
+      window.setTimeout(() => window.print(), 50);
+    });
+
+    const cta = document.querySelector(".hero-inner .cta");
+    if (cta && cta.parentElement) {
+      let actions = cta.parentElement.querySelector(".hero-actions");
+      if (!actions) {
+        actions = document.createElement("div");
+        actions.className = "hero-actions";
+        cta.replaceWith(actions);
+        actions.appendChild(cta);
+      }
+      actions.appendChild(btn);
+      return;
+    }
+
+    const heroInner = document.querySelector(".hero-inner");
+    if (heroInner) {
+      heroInner.appendChild(btn);
+      return;
+    }
+
+    document.body.appendChild(btn);
+  }
+
+  setupPdfButton();
   loadDoc();
 })();
