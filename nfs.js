@@ -4,7 +4,8 @@
   const toc = document.getElementById("toc");
   const tocToggle = document.getElementById("toc-toggle");
   const tocBackdrop = document.getElementById("toc-backdrop");
-  const mdUrl = "docs/redos-8-nfs-setup.md";
+  const mdUrl =
+    document.body?.dataset?.mdUrl || "docs/redos-8-nfs-setup.md";
   let scrollLockY = 0;
 
   function setTocOpen(open) {

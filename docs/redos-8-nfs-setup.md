@@ -8,6 +8,8 @@
 
 Все команды на сервере выполняются от **root** (или через `sudo`).
 
+Перенос данных со старого NFS (`/nfs` → `/opt/share`): [redos-8-nfs-migration.md](redos-8-nfs-migration.md) · веб: [nfs-migrate.html](../nfs-migrate.html).
+
 ---
 
 ## 1. Исходные данные

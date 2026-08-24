@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="nfs.css?v=6">
+  <link rel="stylesheet" href="nfs.css?v=7">
 </head>
 <body>
   <a class="skip" href="#guide">К инструкции</a>
@@ -65,6 +65,7 @@
 
   <footer class="footer">
     Источник: <a href="docs/redos-8-nfs-setup.md">docs/redos-8-nfs-setup.md</a>
+    · перенос данных: <a href="nfs-migrate.html">nfs-migrate.html</a>
     · РЕД ОС 8 · ESXi 7 · LVM · NFS · адреса демо
   </footer>
 
@@ -80,6 +81,8 @@
 - итоговой конфигурации экспорта для клиентов `172.16.50.21` и `172.16.50.22`.
 
 Все команды на сервере выполняются от **root** (или через `sudo`).
+
+Перенос данных со старого NFS (`/nfs` → `/opt/share`): [redos-8-nfs-migration.md](redos-8-nfs-migration.md) · веб: [nfs-migrate.html](../nfs-migrate.html).
 
 ---
 
@@ -571,6 +574,6 @@ df -h /opt/share
 
 </script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="nfs.js?v=6"></script>
+  <script src="nfs.js?v=7"></script>
 </body>
 </html>
