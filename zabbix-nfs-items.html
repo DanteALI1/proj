@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#074850">
+  <title>Zabbix 7 — метрики NFS /opt/share</title>
+  <meta name="description" content="UserParameter nfs.share.* на агенте и элементы данных в русской версии Zabbix 7.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="nfs.css?v=10">
+</head>
+<body data-md-url="docs/redos-8-zabbix-nfs-share-items.md">
+  <a class="skip" href="#guide">К инструкции</a>
+
+  <header class="hero">
+    <div class="hero-visual" aria-hidden="true"></div>
+    <div class="hero-inner">
+      <p class="brand"><span>Zabbix 7</span>NFS</p>
+      <h1>Метрики места /opt/share</h1>
+      <p class="hero-lead">UserParameter на агенте · элементы данных в русской версии UI</p>
+      <a class="cta" href="#guide">Читать шаги</a>
+      <div class="flow" aria-label="Ключи">
+        <div class="flow-item"><strong>nfs.share.free</strong></div>
+        <span class="flow-arrow" aria-hidden="true">·</span>
+        <div class="flow-item"><strong>nfs.share.total</strong></div>
+        <span class="flow-arrow" aria-hidden="true">·</span>
+        <div class="flow-item"><strong>nfs.share.pused</strong></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="toc-backdrop" id="toc-backdrop" hidden></div>
+
+  <div class="shell" id="guide">
+    <nav class="toc" id="toc" aria-label="Оглавление">
+      <h2>Содержание</h2>
+      <ol id="toc-list"></ol>
+    </nav>
+
+    <article class="content" id="content">
+      <div class="summary" aria-label="Ключи">
+        <div class="summary-item">
+          <span class="label">free</span>
+          <span class="value">байты свободно</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">total</span>
+          <span class="value">размер ФС</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">pused</span>
+          <span class="value">% занято</span>
+        </div>
+      </div>
+      <p style="margin:0 0 1rem;color:var(--ink-soft);font-size:0.95rem;">
+        Базовая установка агента: <a href="zabbix-agent.html">zabbix-agent.html</a>
+      </p>
+      <div id="doc-body">Загрузка…</div>
+    </article>
+  </div>
+
+  <footer class="footer">
+    <a href="docs/redos-8-zabbix-nfs-share-items.md">docs/redos-8-zabbix-nfs-share-items.md</a>
+    · Zabbix 7 RU · /opt/share
+  </footer>
+
+  <button class="mobile-toc-toggle" id="toc-toggle" type="button" aria-expanded="false">Содержание</button>
+
+  <script type="text/markdown" id="doc-source">
+# Метрики `/opt/share` в Zabbix 7 (русская версия)
+
+Подробная настройка трёх пользовательских параметров на **агенте** (NFS-сервер, РЕД ОС 8) и **элементов данных** на **сервере Zabbix 7** (веб-интерфейс на русском).
+
+| Ключ | Что измеряет |
+|---|---|
+| `nfs.share.free` | Свободное место на `/opt/share`, **байты** |
+| `nfs.share.total` | Полный размер ФС `/opt/share`, **байты** |
+| `nfs.share.pused` | Занято на `/opt/share`, **проценты (0–100)** |
+
+---
+
+## Часть A. Настройка на агенте (NFS-сервер)
+
+Выполняйте на машине, где шара `/opt/share` (пример IP: `172.16.40.10`).
+
+### A1. Проверить, что агент установлен и `/opt/share` есть
+
+```bash
+systemctl status zabbix-agent
+findmnt /opt/share
+df -h /opt/share
+```
+
+### A2. Включить подключение доп. конфигов
+
+Откройте основной файл:
+
+```bash
+nano /etc/zabbix/zabbix_agentd.conf
+```
+
+Найдите строку `Include` и убедитесь, что она **не закомментирована**:
+
+```text
+Include=/etc/zabbix/zabbix_agentd.d/*.conf
+```
+
+Если было `# Include=...` — уберите `#` и пробел после него.
+
+Также должны быть заданы (как в основной инструкции):
+
+```text
+Server=<IP_Zabbix_Server>
+ServerActive=<IP_Zabbix_Server>
+Hostname=<имя_как_в_Zabbix>
+```
+
+Пример:
+
+```text
+Server=172.16.40.20
+ServerActive=172.16.40.20
+Hostname=nfs-redos-01
+```
+
+### A3. Создать файл с UserParameter
+
+```bash
+mkdir -p /etc/zabbix/zabbix_agentd.d
+nano /etc/zabbix/zabbix_agentd.d/nfs_share.conf
+```
+
+Вставьте **точно** (без лишних пробелов вокруг запятой в `UserParameter=`):
+
+```text
+# Свободное место на шаре /opt/share (байты)
+UserParameter=nfs.share.free,df -B1 --output=avail /opt/share | tail -1
+
+# Размер ФС /opt/share (байты)
+UserParameter=nfs.share.total,df -B1 --output=size /opt/share | tail -1
+
+# Процент использования /opt/share
+UserParameter=nfs.share.pused,df --output=pcent /opt/share | tail -1 | tr -dc '0-9'
+```
+
+#### Как это читается
+
+Формат строки:
+
+```text
+UserParameter=<ключ>,<команда_shell>
+```
+
+| Часть | Пример | Смысл |
+|---|---|---|
+| Ключ | `nfs.share.free` | То, что вы укажете в поле **Ключ** в Zabbix |
+| Команда | `df -B1 --output=avail /opt/share \| tail -1` | Что агент выполнит и вернёт одной строкой |
+
+- `df -B1` — размеры в **байтах** (не КиБ/ГиБ).
+- `--output=avail` / `size` / `pcent` — только нужный столбец.
+- `tail -1` — убрать заголовок `df`.
+- `tr -dc '0-9'` — из `45%` сделать `45` (чистое число для Zabbix).
+
+Сохраните файл (`Ctrl+O`, Enter, `Ctrl+X` в nano).
+
+### A4. Права на файл
+
+```bash
+chown root:root /etc/zabbix/zabbix_agentd.d/nfs_share.conf
+chmod 644 /etc/zabbix/zabbix_agentd.d/nfs_share.conf
+```
+
+### A5. Перезапустить агент
+
+```bash
+systemctl restart zabbix-agent
+systemctl status zabbix-agent
+```
+
+### A6. Локальная проверка ключей (обязательно)
+
+```bash
+zabbix_agentd -t nfs.share.free
+zabbix_agentd -t nfs.share.total
+zabbix_agentd -t nfs.share.pused
+```
+
+Успешный вид примерно такой:
+
+```text
+nfs.share.free                                    [u|6438820126720]
+nfs.share.total                                   [u|6597069766656]
+nfs.share.pused                                   [u|1]
+```
+
+Буква в скобках может быть `u`/`s`/`d` — важно, что есть **число**, а не ошибка.
+
+Если видите `ZBX_NOTSUPPORTED` или `Unsupported item key`:
+
+1. опечатка в ключе / файле;
+2. нет `Include=...`;
+3. агент не перезапущен;
+4. для agent2 другой путь конфига (`zabbix_agent2.conf`) — эта инструкция для **zabbix-agent** (`zabbix_agentd`).
+
+Проверка команд вручную от пользователя, под которым думает агент:
+
+```bash
+df -B1 --output=avail /opt/share | tail -1
+df -B1 --output=size /opt/share | tail -1
+df --output=pcent /opt/share | tail -1 | tr -dc '0-9'
+```
+
+### A7. Проверка с сервера Zabbix (passive)
+
+На **сервере Zabbix** (если установлен `zabbix-get`):
+
+```bash
+zabbix_get -s 172.16.40.10 -p 10050 -k nfs.share.free
+zabbix_get -s 172.16.40.10 -p 10050 -k nfs.share.total
+zabbix_get -s 172.16.40.10 -p 10050 -k nfs.share.pused
+```
+
+Должны вернуться числа. Если timeout — firewall `10050` на агенте / `Server=` в конфиге агента.
+
+---
+
+## Часть B. Настройка на сервере Zabbix 7 (русский интерфейс)
+
+Предполагается: узел сети уже создан, агент доступен (значок **ZBX** зелёный или данные с шаблона Linux уже идут).
+
+В Zabbix 7 меню: **Сбор данных → Узлы сети**.
+
+### B1. Открыть элементы данных узла
+
+1. Войдите в веб-интерфейс Zabbix.
+2. Меню слева: **Сбор данных** → **Узлы сети**.
+3. Найдите свой NFS-узел (например, `nfs-redos-01`).
+4. В строке этого узла нажмите ссылку **Элементы данных**.
+5. Справа сверху нажмите **Создать элемент данных**.
+
+---
+
+### B2. Элемент 1 — свободное место (`nfs.share.free`)
+
+Заполните вкладку **Элемент данных**:
+
+| Поле (RU) | Что указать | Пояснение |
+|---|---|---|
+| **Имя** | `NFS: свободно на /opt/share` | Как будет видно в списках |
+| **Тип** | `Zabbix агент` | Passiveive: сервер сам спрашивает агент. Если используете только active — выберите `Zabbix агент (активный)` |
+| **Ключ** | `nfs.share.free` | **Точно** как в UserParameter, без пробелов |
+| **Тип информации** | `Числовой (целое положительное)` | Байты — целое число. В 7.x также может быть `Числовой (целое)` |
+| **Единицы измерения** | `B` | Байты; в графиках Zabbix сам покажет GiB и т.д. |
+| **Интерфейс узла сети** | Agent `172.16.40.10:10050` | Для типа `Zabbix агент` (не active) |
+| **Интервал обновления** | `1m` или `5m` | Как часто опрашивать |
+| **Таймаут** | оставить по умолчанию | |
+| **Приложения** / **Метки** | например приложение `NFS` | Для группировки (в 7.x часто **Метки** / tags: `nfs`, `disk`) |
+| **Описание** | `Свободное место df avail /opt/share` | По желанию |
+
+Нажмите **Добавить**.
+
+> Если тип **Zabbix агент (активный)** — интерфейс агента в элементе может не требоваться, но на агенте обязательны `ServerActive=` и тот же `Hostname=`, что **Имя узла сети** (Host name).
+
+---
+
+### B3. Элемент 2 — размер ФС (`nfs.share.total`)
+
+Снова **Создать элемент данных**:
+
+| Поле (RU) | Значение |
+|---|---|
+| **Имя** | `NFS: размер /opt/share` |
+| **Тип** | `Zabbix агент` (или active — как у первого) |
+| **Ключ** | `nfs.share.total` |
+| **Тип информации** | `Числовой (целое положительное)` |
+| **Единицы измерения** | `B` |
+| **Интервал обновления** | `1h` или `1d` (размер тома меняется редко) |
+| **Интерфейс** | тот же Agent |
+
+**Добавить**.
+
+---
+
+### B4. Элемент 3 — процент занятого (`nfs.share.pused`)
+
+| Поле (RU) | Значение |
+|---|---|
+| **Имя** | `NFS: занято % на /opt/share` |
+| **Тип** | `Zabbix агент` (или active) |
+| **Ключ** | `nfs.share.pused` |
+| **Тип информации** | `Числовой (целое положительное)` или `Числовой (с плавающей точкой)` |
+| **Единицы измерения** | `%` |
+| **Интервал обновления** | `1m` или `5m` |
+| **Интерфейс** | тот же Agent |
+
+**Добавить**.
+
+---
+
+### B5. (Рекомендуется) Триггер на мало места
+
+1. У узла откройте **Триггеры** → **Создать триггер**.
+2. Пример:
+
+| Поле | Значение |
+|---|---|
+| **Имя** | `NFS: мало места на /opt/share` |
+| **Важность** | Предупреждение / Высокая |
+| **Выражение** | см. ниже |
+
+Выражение через конструктор или вручную (имена элементов подставьте свои):
+
+```text
+last(/nfs-redos-01/nfs.share.pused)>90
+```
+
+Или если Host name другой — замените `nfs-redos-01`.
+
+В конструкторе выражений:
+
+1. **Добавить** → выбрать элемент `NFS: занято % на /opt/share`
+2. Функция: `last()`
+3. Условие: `> 90`
+
+**Добавить** триггер.
+
+---
+
+### B6. (По желанию) График
+
+1. У узла: **Графики** → **Создать график**.
+2. **Имя:** `NFS /opt/share — место`
+3. **Элементы графика → Добавить:**
+   - `NFS: свободно на /opt/share`
+   - `NFS: размер /opt/share`  
+   или отдельно график только для `%`.
+4. Сохранить.
+
+Смотреть: **Мониторинг → Узлы сети** → графики / **Последние данные**.
+
+---
+
+## Часть C. Проверка в интерфейсе Zabbix 7
+
+1. **Мониторинг → Последние данные**.
+2. Фильтр: узел `nfs-redos-01`, текст `NFS` или `nfs.share`.
+3. Через 1–2 интервала должны появиться значения.
+4. Нажмите на значение / график — должна рисоваться история.
+
+Если элемент **Неподдерживаемый**:
+
+- откройте элемент → смотрите текст ошибки;
+- снова `zabbix_agentd -t nfs.share.pused` на агенте;
+- ключ в UI и в `UserParameter=` должны совпадать **один в один**;
+- тип элемента (агент / агент активный) должен соответствовать тому, как реально ходит трафик.
+
+---
+
+## Часть D. Краткая шпаргалка
+
+### На агенте
+
+```bash
+# /etc/zabbix/zabbix_agentd.d/nfs_share.conf
+UserParameter=nfs.share.free,df -B1 --output=avail /opt/share | tail -1
+UserParameter=nfs.share.total,df -B1 --output=size /opt/share | tail -1
+UserParameter=nfs.share.pused,df --output=pcent /opt/share | tail -1 | tr -dc '0-9'
+
+# в zabbix_agentd.conf:
+# Include=/etc/zabbix/zabbix_agentd.d/*.conf
+
+systemctl restart zabbix-agent
+zabbix_agentd -t nfs.share.free
+zabbix_agentd -t nfs.share.total
+zabbix_agentd -t nfs.share.pused
+```
+
+### В Zabbix 7 (RU)
+
+```text
+Сбор данных → Узлы сети → [ваш узел] → Элементы данных → Создать элемент данных
+
+Ключ: nfs.share.free   | Тип: Zabbix агент | Тип информации: целое | Ед.: B
+Ключ: nfs.share.total  | Тип: Zabbix агент | Тип информации: целое | Ед.: B
+Ключ: nfs.share.pused  | Тип: Zabbix агент | Тип информации: целое | Ед.: %
+```
+
+---
+
+## Часть E. Типовые ошибки
+
+| Ошибка | Причина | Что сделать |
+|---|---|---|
+| `Unsupported item key` | нет UserParameter / не тот агент | файл `.conf`, `Include`, restart, `-t` |
+| Элемент «Неподдерживаемый» | ключ ≠ конфиг | сравнить символ в символ |
+| Пустые данные | интервал / узел Disabled | узел **Включён**, подождать интервал |
+| Active не работает | Hostname | Host name узла = `Hostname=` в conf |
+| `%` приходит как `45%` | нет `tr -dc` | поправить UserParameter и restart |
+| Байты «ломаются» в UI | неверные единицы | поставить единицы `B` |
+
+---
+
+*Для Zabbix 7.x, веб-интерфейс на русском. Агент: классический `zabbix-agent` (`zabbix_agentd`) на РЕД ОС 8.*
+
+</script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="nfs.js?v=10"></script>
+</body>
+</html>

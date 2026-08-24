@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#074850">
+  <title>РЕД ОС NFS — инструкция хранилища 6 ТБ</title>
+  <meta name="description" content="Полная инструкция NFS на РЕД ОС 8: ESXi 3×2 ТБ, LVM, /opt/share, демонстрационные адреса 172.16.x.x.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="nfs.css?v=10">
+</head>
+<body>
+  <a class="skip" href="#guide">К инструкции</a>
+
+  <header class="hero">
+    <div class="hero-visual" aria-hidden="true"></div>
+    <div class="hero-inner">
+      <p class="brand"><span>РЕД ОС 8</span>NFS</p>
+      <h1>Хранилище 6 ТБ для стенда</h1>
+      <p class="hero-lead">ESXi · три диска по 2 ТБ · LVM · экспорт /opt/share на 172.16.40.10</p>
+      <a class="cta" href="#guide">
+        Читать инструкцию
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </a>
+      <div class="flow" aria-label="Схема потока данных">
+        <div class="flow-item"><strong>sdb+sdc+sdd</strong> 3×2ТБ</div>
+        <span class="flow-arrow" aria-hidden="true">→</span>
+        <div class="flow-item"><strong>vg_nfs/lv_share</strong></div>
+        <span class="flow-arrow" aria-hidden="true">→</span>
+        <div class="flow-item"><strong>/opt/share</strong></div>
+        <span class="flow-arrow" aria-hidden="true">→</span>
+        <div class="flow-item"><strong>172.16.50.21 / .22</strong></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="toc-backdrop" id="toc-backdrop" hidden></div>
+
+  <div class="shell" id="guide">
+    <nav class="toc" id="toc" aria-label="Оглавление">
+      <h2>Содержание</h2>
+      <ol id="toc-list"></ol>
+    </nav>
+
+    <article class="content" id="content">
+      <div class="summary" aria-label="Ключевые параметры">
+        <div class="summary-item">
+          <span class="label">Сервер</span>
+          <span class="value">172.16.40.10</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">Шара</span>
+          <span class="value">/opt/share · 6 ТБ</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">Клиенты</span>
+          <span class="value">.21 · .22</span>
+        </div>
+      </div>
+      <div id="doc-body">Загрузка инструкции…</div>
+    </article>
+  </div>
+
+  <footer class="footer">
+    Источник: <a href="docs/redos-8-nfs-setup.md">docs/redos-8-nfs-setup.md</a>
+    · перенос: <a href="nfs-migrate.html">nfs-migrate.html</a> · zabbix: <a href="zabbix-agent.html">zabbix-agent.html</a>
+    · РЕД ОС 8 · ESXi 7 · LVM · NFS · адреса демо
+  </footer>
+
+  <button class="mobile-toc-toggle" id="toc-toggle" type="button" aria-expanded="false">Содержание</button>
+
+  <script type="text/markdown" id="doc-source">
+# Полная инструкция: NFS-хранилище на РЕД ОС 8
+
+Инструкция по развёртыванию NFS-сервера на **РЕД ОС 8** с учётом:
+- адаптации с процедуры Astra Linux 1.6;
+- реальной разметки системного диска;
+- трёх дополнительных дисков по 2 ТБ из **ESXi 7**;
+- итоговой конфигурации экспорта для клиентов `172.16.50.21` и `172.16.50.22`.
+
+Все команды на сервере выполняются от **root** (или через `sudo`).
+
+Перенос данных со старого NFS (`/nfs` → `/opt/share`): [redos-8-nfs-migration.md](redos-8-nfs-migration.md) · веб: [nfs-migrate.html](../nfs-migrate.html).
+
+---
+
+## 1. Исходные данные
+
+| Параметр | Значение |
+|---|---|
+| ОС сервера | РЕД ОС 8 |
+| IP сервера NFS | `172.16.40.10` |
+| Шлюз доступа | `172.16.40.1` |
+| Сеть клиентов | `172.16.50.0/24` |
+| Клиенты NFS | `172.16.50.21`, `172.16.50.22` |
+| Точка хранения / экспорта | `/opt/share` |
+| Объём хранилища | ~6 ТБ (LVM: 3 × 2 ТБ) |
+| Гипервизор | VMware ESXi 7 |
+
+> Адреса в документе — **примерные** (документационная схема). Подставьте свои IP при внедрении.
+
+### Куда попадают данные
+
+Данные, записанные клиентами в NFS-шару, сохраняются на сервере в каталоге **`/opt/share`**.
+
+Физически это логический том LVM:
+
+```text
+/dev/mapper/vg_nfs-lv_share  →  смонтирован в  /opt/share
+```
+
+Том собран из дисков **`sdb` + `sdc` + `sdd`** (по 2 ТБ каждый).  
+Системный диск **`sda`** (`/`, `/home`, `/boot`) для NFS-данных **не используется**.
+
+Проверка:
+
+```bash
+findmnt /opt/share
+df -h /opt/share
+```
+
+Пример ожидаемого результата:
+
+```text
+/dev/mapper/vg_nfs-lv_share   6,0T   ...   /opt/share
+```
+
+---
+
+## 2. Разметка дисков сервера
+
+### 2.1. Системный диск (до добавления хранилища)
+
+```text
+Файловая система   Тип      Cмонтировано в   Свободно (ориентир)
+/dev/sda4          ext4     /                ~54 ГБ
+/dev/sda2          ext4     /boot            —
+/dev/sda5          ext4     /home            ~28 ГБ
+/dev/sda1          vfat     /boot/efi        —
+/dev/sda3          swap     [SWAP]           —
+```
+
+Отдельного раздела `/opt` нет: без дополнительных дисков каталог `/opt/share` оказался бы на корне `/`.
+
+### 2.2. Диски после подключения из ESXi 7
+
+Фактический вывод `lsblk`:
+
+```text
+NAME    SIZE TYPE FSTYPE MOUNTPOINT
+sda     100G disk
+├─sda1  600M part vfat   /boot/efi
+├─sda2    1G part ext4   /boot
+├─sda3  7,9G part swap   [SWAP]
+├─sda4 60,8G part ext4   /
+└─sda5 29,7G part ext4   /home
+sdb       2T disk
+sdc       2T disk
+sdd       2T disk
+zram0   7,8G disk        [SWAP]
+```
+
+- **`sda`** — системный диск, **не трогать**.
+- **`sdb`, `sdc`, `sdd`** — новые пустые диски по 2 ТБ под NFS.
+
+В системе есть пользователь с UID **1000** (`/run/user/1000`) — это важно для `anonuid=1000` / `anongid=1000`.
+
+---
+
+## 3. Подготовка дисков ESXi → LVM → `/opt/share`
+
+### 3.1. Обнаружение дисков в гостевой ОС
+
+Если диски добавили «на горячую»:
+
+```bash
+for host in /sys/class/scsi_host/host*; do
+  echo "- - -" > "$host/scan"
+done
+
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT
+```
+
+Должны быть видны `sdb`, `sdc`, `sdd` по 2T без разделов.
+
+В ESXi желательно использовать контроллер **VMware Paravirtual (PVSCSI)**.
+
+### 3.2. Установка LVM
+
+```bash
+dnf install -y lvm2
+```
+
+### 3.3. GPT-разделы с флагом LVM
+
+```bash
+for disk in sdb sdc sdd; do
+  parted -s /dev/$disk mklabel gpt
+  parted -s /dev/$disk mkpart primary 0% 100%
+  parted -s /dev/$disk set 1 lvm on
+  partprobe /dev/$disk
+done
+
+lsblk /dev/sdb /dev/sdc /dev/sdd
+```
+
+Появятся разделы `sdb1`, `sdc1`, `sdd1`.
+
+### 3.4. Создание PV / VG / LV
+
+```bash
+pvcreate /dev/sdb1 /dev/sdc1 /dev/sdd1
+vgcreate vg_nfs /dev/sdb1 /dev/sdc1 /dev/sdd1
+lvcreate -l 100%FREE -n lv_share vg_nfs
+
+pvs
+vgs
+lvs
+```
+
+Устройство тома: `/dev/vg_nfs/lv_share` (он же `/dev/mapper/vg_nfs-lv_share`).
+
+### 3.5. Файловая система XFS и монтирование
+
+```bash
+mkfs.xfs -f /dev/vg_nfs/lv_share
+mkdir -p /opt/share
+mount /dev/vg_nfs/lv_share /opt/share
+chown 1000:1000 /opt/share
+chmod 777 /opt/share
+df -h /opt/share
+```
+
+Ожидается около **6,0T** на `/opt/share`.
+
+### 3.6. Автомонтирование через `/etc/fstab`
+
+```bash
+UUID=$(blkid -s UUID -o value /dev/vg_nfs/lv_share)
+echo "UUID=$UUID  /opt/share  xfs  defaults,nofail  0  0" >> /etc/fstab
+mount -a
+findmnt /opt/share
+```
+
+Опция `nofail` позволяет системе загрузиться, даже если том временно недоступен.
+
+---
+
+## 4. Настройка NFS-сервера (РЕД ОС 8)
+
+### 4.1. Отличия от Astra Linux 1.6
+
+| Astra Linux 1.6 | РЕД ОС 8 |
+|---|---|
+| `apt install nfs-kernel-server` | `dnf install nfs-utils nfs4-acl-tools` |
+| `apt install autofs` | `dnf install autofs` (нужен в основном клиенту) |
+| `nobody:nogroup` | `nobody:nobody` (здесь используем `1000:1000`) |
+| служба `nfs-kernel-server` | служба `nfs-server` |
+| правка unit в `multi-user.target.wants` | drop-in `/etc/systemd/system/nfs-server.service.d/override.conf` |
+| `/etc/exports` | `/etc/exports` (формат тот же) |
+
+### 4.2. Установка пакетов
+
+```bash
+dnf install -y nfs-utils nfs4-acl-tools
+```
+
+Установочный диск не требуется, если настроены репозитории РЕД ОС (`dnf repolist`).
+
+### 4.3. Зависимость от `rpcbind` (аналог правки UNIT в Astra)
+
+Не редактируйте symlink в `multi-user.target.wants` — используйте drop-in:
+
+```bash
+mkdir -p /etc/systemd/system/nfs-server.service.d
+cat > /etc/systemd/system/nfs-server.service.d/override.conf <<'EOF'
+[Unit]
+Requires=rpcbind.service
+After=rpcbind.service
+EOF
+
+systemctl daemon-reload
+systemctl enable --now rpcbind.service
+systemctl enable --now nfs-server.service
+systemctl status nfs-server.service
+```
+
+### 4.4. Конфигурация `/etc/exports`
+
+Файл задаёт, какие каталоги и каким клиентам доступны.
+
+**Правила:**
+- один экспорт — одна строка (или несколько клиентов в одной строке через пробел);
+- между IP и `(` **не должно быть пробела**;
+- опции через запятую без пробелов.
+
+#### Итоговая рабочая конфигурация (два хоста)
+
+Для двух конкретных клиентов **не указывайте маску `/24` у IP хоста** — иначе это будет сеть, а не отдельные машины.
+
+```bash
+cat > /etc/exports <<'EOF'
+/opt/share 172.16.50.21(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
+/opt/share 172.16.50.22(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
+EOF
+```
+
+#### Если нужен весь сегмент клиентов
+
+Одна строка на сеть `172.16.50.0/24`:
+
+```text
+/opt/share 172.16.50.0/24(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
+```
+
+### 4.5. Пояснение опций экспорта
+
+| Опция | Назначение |
+|---|---|
+| `rw` | чтение и запись (`ro` — только чтение) |
+| `insecure` | разрешить клиентам подключение с портов > 1024 |
+| `nohide` | показывать нелокальные/bind-ресурсы внутри экспорта |
+| `no_root_squash` | root на клиенте сохраняет права root на сервере (**менее безопасно**, использовать осознанно) |
+| `anonuid=1000` | UID анонимного пользователя на сервере |
+| `anongid=1000` | GID анонимного пользователя на сервере |
+| `no_subtree_check` | без проверки поддерева; допустимо, т.к. `/opt/share` — отдельный смонтированный том |
+| `subtree_check` | проверка поддерева; нужна, если экспорт — подкаталог общего раздела |
+| `all_squash` | все пользователи клиента → анонимный (в текущей схеме не используется) |
+
+> `no_root_squash` даёт клиентскому root полные права на файлы шары. Если это не требуется политикой безопасности — замените на `root_squash` или `all_squash`.
+
+### 4.6. Применение экспорта
+
+```bash
+exportfs -ra
+systemctl restart nfs-server.service
+exportfs -v
+showmount -e localhost
+```
+
+Ожидается наличие `/opt/share` в списке экспортов.
+
+---
+
+## 5. Firewall (firewalld)
+
+```bash
+systemctl status firewalld
+
+firewall-cmd --permanent --add-service=nfs
+firewall-cmd --permanent --add-service=mountd
+firewall-cmd --permanent --add-service=rpc-bind
+firewall-cmd --reload
+firewall-cmd --list-services
+```
+
+Ограничение только сетью клиентов (рекомендуется):
+
+```bash
+firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="172.16.50.0/24" service name="nfs" accept'
+firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="172.16.50.0/24" service name="mountd" accept'
+firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="172.16.50.0/24" service name="rpc-bind" accept'
+firewall-cmd --reload
+```
+
+---
+
+## 6. SELinux (если Enforcing)
+
+```bash
+getenforce
+```
+
+При необходимости:
+
+```bash
+dnf install -y policycoreutils-python-utils
+semanage fcontext -a -t nfs_t "/opt/share(/.*)?"
+restorecon -Rv /opt/share
+setsebool -P nfs_export_all_rw 1
+```
+
+---
+
+## 7. Подключение с клиента
+
+### 7.1. Установка клиента (РЕД ОС / RHEL-подобные)
+
+```bash
+dnf install -y nfs-utils
+systemctl enable --now nfs-client.target
+```
+
+### 7.2. Проверка доступности экспорта
+
+```bash
+showmount -e 172.16.40.10
+```
+
+### 7.3. Монтирование вручную
+
+```bash
+mkdir -p /mnt/share
+mount -t nfs 172.16.40.10:/opt/share /mnt/share
+df -h /mnt/share
+echo "NFS test $(date)" > /mnt/share/test.txt
+ls -la /mnt/share
+```
+
+### 7.4. Постоянное монтирование (`/etc/fstab`)
+
+```text
+172.16.40.10:/opt/share  /mnt/share  nfs  defaults,_netdev  0  0
+```
+
+Применить:
+
+```bash
+mount -a
+```
+
+### 7.5. Автомонтирование через `autofs` (по желанию)
+
+```bash
+dnf install -y autofs
+mkdir -p /media/nfs_share_autofs
+```
+
+В `/etc/auto.master`:
+
+```text
+/media/nfs_share_autofs  /etc/auto.nfs  timeout=120  -browse
+```
+
+В `/etc/auto.nfs`:
+
+```text
+server  -rw,soft,intr  172.16.40.10:/opt/share
+```
+
+```bash
+systemctl enable --now autofs
+ls /media/nfs_share_autofs/server
+```
+
+---
+
+## 8. Чеклист «с нуля» (сервер)
+
+```bash
+# --- Диски ESXi ---
+for host in /sys/class/scsi_host/host*; do echo "- - -" > "$host/scan"; done
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT
+
+dnf install -y lvm2
+for disk in sdb sdc sdd; do
+  parted -s /dev/$disk mklabel gpt
+  parted -s /dev/$disk mkpart primary 0% 100%
+  parted -s /dev/$disk set 1 lvm on
+  partprobe /dev/$disk
+done
+pvcreate /dev/sdb1 /dev/sdc1 /dev/sdd1
+vgcreate vg_nfs /dev/sdb1 /dev/sdc1 /dev/sdd1
+lvcreate -l 100%FREE -n lv_share vg_nfs
+mkfs.xfs -f /dev/vg_nfs/lv_share
+mkdir -p /opt/share
+mount /dev/vg_nfs/lv_share /opt/share
+chown 1000:1000 /opt/share
+chmod 777 /opt/share
+UUID=$(blkid -s UUID -o value /dev/vg_nfs/lv_share)
+echo "UUID=$UUID  /opt/share  xfs  defaults,nofail  0  0" >> /etc/fstab
+mount -a
+df -h /opt/share
+
+# --- NFS ---
+dnf install -y nfs-utils nfs4-acl-tools
+mkdir -p /etc/systemd/system/nfs-server.service.d
+cat > /etc/systemd/system/nfs-server.service.d/override.conf <<'EOF'
+[Unit]
+Requires=rpcbind.service
+After=rpcbind.service
+EOF
+systemctl daemon-reload
+systemctl enable --now rpcbind.service nfs-server.service
+
+cat > /etc/exports <<'EOF'
+/opt/share 172.16.50.21(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
+/opt/share 172.16.50.22(rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check)
+EOF
+exportfs -ra
+systemctl restart nfs-server.service
+
+firewall-cmd --permanent --add-service=nfs
+firewall-cmd --permanent --add-service=mountd
+firewall-cmd --permanent --add-service=rpc-bind
+firewall-cmd --reload
+
+exportfs -v
+showmount -e localhost
+findmnt /opt/share
+df -h /opt/share
+```
+
+---
+
+## 9. Диагностика
+
+```bash
+systemctl status nfs-server.service rpcbind.service
+journalctl -u nfs-server.service -xe
+exportfs -v
+showmount -e 172.16.40.10
+rpcinfo -p 172.16.40.10
+firewall-cmd --list-all
+lsblk -f
+pvs; vgs; lvs
+findmnt /opt/share
+df -h /opt/share
+du -sh /opt/share
+```
+
+| Проблема | Что проверить |
+|---|---|
+| Дисков нет в `lsblk` | rescan SCSI / reboot ВМ / Hard Disk в ESXi |
+| `Access denied by server` | IP клиента в `/etc/exports`, `exportfs -ra` |
+| `Permission denied` при записи | права на `/opt/share`, `anonuid`/`anongid`, `no_root_squash` |
+| Клиент не видит экспорт | firewalld, маршрутизация через `172.16.40.1`, `nfs-server` |
+| После reboot `/opt/share` пустой/на корне | `findmnt /opt/share`, строка UUID в `/etc/fstab` |
+| Закончилось место | `df -h /opt/share`; при необходимости расширить VG/LV |
+
+### Расширение тома позже (после увеличения диска в ESXi)
+
+```bash
+# после добавления PV в vg_nfs или увеличения существующего PV
+pvresize /dev/sdb1    # пример
+lvextend -l +100%FREE /dev/vg_nfs/lv_share
+xfs_growfs /opt/share
+df -h /opt/share
+```
+
+---
+
+## 10. Рекомендации по безопасности и эксплуатации
+
+1. Не экспортируйте `/` или `/home` целиком без необходимости.
+2. `no_root_squash` — только если это реально нужно приложениям; иначе используйте `root_squash` / `all_squash`.
+3. Ограничивайте доступ конкретными IP (как сейчас) или узкой подсетью `172.16.50.0/24`.
+4. Держите NFS в доверенной сети / VLAN; протокол сам по себе трафик не шифрует.
+5. Делайте бэкапы содержимого `/opt/share`.
+6. Следите за местом: `df -h /opt/share`.
+7. Системный диск `sda` оставляйте только под ОС; данные NFS — на `vg_nfs`.
+
+---
+
+## 11. Итоговое состояние стенда
+
+| Компонент | Состояние |
+|---|---|
+| Системный диск | `/dev/sda` 100 ГБ (/, /boot, /home, swap) |
+| Диски хранилища | `/dev/sdb`, `/dev/sdc`, `/dev/sdd` по 2 ТБ |
+| VG / LV | `vg_nfs` / `lv_share` |
+| Точка монтирования | `/opt/share` (XFS, ~6,0 ТБ) |
+| Сервер NFS | `172.16.40.10` |
+| Шлюз | `172.16.40.1` |
+| Экспорт NFS | `/opt/share` → `172.16.50.21`, `172.16.50.22` |
+| Опции экспорта | `rw,insecure,nohide,no_root_squash,anonuid=1000,anongid=1000,no_subtree_check` |
+| Куда пишутся данные клиентов | `/opt/share` на сервере `172.16.40.10` (диски sdb+sdc+sdd) |
+
+---
+
+*Документ подготовлен для РЕД ОС 8 по мотивам инструкции Astra Linux 1.6 и конфигурации стенда (ESXi 7, 3×2 ТБ, LVM, NFS). IP-адреса в примерах демонстрационные.*
+
+</script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="nfs.js?v=10"></script>
+</body>
+</html>
