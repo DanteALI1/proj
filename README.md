@@ -13,3 +13,7 @@
 ### Zabbix Agent на NFS-сервере
 - Markdown: [docs/redos-8-zabbix-agent-nfs.md](docs/redos-8-zabbix-agent-nfs.md)
 - Веб: [zabbix-agent.html](zabbix-agent.html)
+
+### Метрики `/opt/share` в Zabbix 7 (RU)
+- Markdown: [docs/redos-8-zabbix-nfs-share-items.md](docs/redos-8-zabbix-nfs-share-items.md)
+- Веб: [zabbix-nfs-items.html](zabbix-nfs-items.html)
